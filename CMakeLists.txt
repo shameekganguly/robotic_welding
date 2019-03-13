@@ -4,7 +4,6 @@ project (WELDING_SIM)
 SET(CMAKE_CXX_FLAGS "-std=c++11 -I/usr/include -I/usr/local/include")
 
 # set source
-set (DEMO1_SOURCE ${PROJECT_SOURCE_DIR}/demo1/main.cpp)
 include_directories(${PROJECT_SOURCE_DIR}/src/)
 
 # # set common dependencies
@@ -43,6 +42,16 @@ find_package(SAI2-GRAPHICS REQUIRED)
 include_directories(${SAI2-GRAPHICS_INCLUDE_DIRS})
 add_definitions(${SAI2-GRAPHICS_DEFINITIONS})
 
+# - SAI2-PRIMITIVES
+find_package(SAI2-PRIMITIVES REQUIRED)
+include_directories(${SAI2-PRIMITIVES_INCLUDE_DIRS})
+add_definitions(${SAI2-PRIMITIVES_DEFINITIONS})
+
+# - SAI2-COMMON
+find_package(SAI2-COMMON REQUIRED)
+include_directories(${SAI2-COMMON_INCLUDE_DIRS})
+add_definitions(${SAI2-COMMON_DEFINITIONS})
+
 # - glfw3
 find_package(glfw3 QUIET)
 find_library(GLFW_LIBRARY glfw)
@@ -51,13 +60,19 @@ find_library(GLFW_LIBRARY glfw)
 find_package(RBDL QUIET)
 include_directories(${RBDL_INCLUDE_DIR})
 
+# - hiredis
+find_library(HIREDIS_LIBRARY hiredis)
+
 set(COMMON_LIBRARIES
 	${CHAI3D_LIBRARIES}
     ${SAI2-URDF_LIBRARIES}
     ${SAI2-SIMULATION_LIBRARIES}
     ${SAI2-MODEL_LIBRARIES}
     ${SAI2-GRAPHICS_LIBRARIES}
+    ${SAI2-PRIMITIVES_LIBRARIES}
+    ${SAI2-COMMON_LIBRARIES}
 	${GLFW_LIBRARY}
+	${HIREDIS_LIBRARY}
 	)
 
 # add apps
@@ -68,17 +83,5 @@ set (CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE        ${PROJECT_SOURCE_DIR}/bin)
 set (CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO ${PROJECT_SOURCE_DIR}/bin)
 set (BINARY_DIR ${PROJECT_SOURCE_DIR}/bin)
 
-# create an executable
-ADD_EXECUTABLE (demo1 ${DEMO1_SOURCE})
-TARGET_LINK_LIBRARIES (demo1 ${COMMON_LIBRARIES})
-
-# export resources such as model files.
-# NOTE: this requires an install build
-SET(RESOURCE_DIR ${BINARY_DIR}/resources)
-FILE(MAKE_DIRECTORY ${RESOURCE_DIR})
-FILE(COPY 
-	demo1/world.urdf
-	demo1/v\ groove\ butt\ welding\ piece.mtl
-	demo1/v\ groove\ butt\ welding\ piece.obj
-	DESTINATION ${RESOURCE_DIR}
-)
+ADD_SUBDIRECTORY(demo1)
+ADD_SUBDIRECTORY(demo2)

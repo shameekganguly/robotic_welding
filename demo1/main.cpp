@@ -27,10 +27,10 @@ using namespace Eigen;
 const string world_fname = "resources/world.urdf";
 const string robot_fname = "../resources/kuka_iiwa/kuka_iiwa.urdf";
 const string robot_name = "IIWA";
-string camera_name = "camera_front";
+// string camera_name = "camera_front";
 // string camera_name = "camera_isometric";
 // string camera_name = "camera_front";
-// string camera_name = "camera_top";
+string camera_name = "camera_front";
 // string ee_link_name = "link6";
 
 // contact link names
@@ -104,7 +104,7 @@ int main (int argc, char** argv) {
     // while window is open:
     while (!glfwWindowShouldClose(window)) {
 		// update kinematic models
-		robot->updateModel();
+		// robot->updateModel();
 
 		// update graphics. this automatically waits for the correct amount of time
 		int width, height;
@@ -144,7 +144,18 @@ void control(Sai2Model::Sai2Model* robot, Simulation::Sai2Simulation* sim) {
 	Eigen::VectorXd tau(robot->dof());
 	Eigen::VectorXd tau_grav(robot->dof());
 
+	Eigen::MatrixXd Jbar;
+	Eigen::MatrixXd Jv;
+	Eigen::MatrixXd Jw;
+	Eigen::MatrixXd J0;
+	Eigen::VectorXd opspace_vel(6); // operational space velocity
+
+	string ee_link_name = "link6";
+	Eigen::Vector3d ee_link_pos(0.0, 0.0, 0.4);
+	int phase = -1;
+
 	bool fTimerDidSleep = true;
+	double phase_change_time = timer.elapsedTime();
 	while (fSimulationRunning) { //automatically set to false when simulation is quit
 		fTimerDidSleep = timer.waitForNextLoop();
 
@@ -156,17 +167,83 @@ void control(Sai2Model::Sai2Model* robot, Simulation::Sai2Simulation* sim) {
 		double loop_dt = curr_time - last_time;
 
 		// read joint positions, velocities, update model
-		sim->getJointPositions(robot_name, robot->_q);
-		sim->getJointVelocities(robot_name, robot->_dq);
+		// sim->getJointPositions(robot_name, robot->_q);
+		// sim->getJointVelocities(robot_name, robot->_dq);
 
-		// get gravity torques
-		robot->gravityVector(tau_grav);
+		robot->_q += robot->_dq*loop_dt;
 
-		// set tau
-		tau.setZero();
-		tau = tau_grav;
-		sim->setJointTorques(robot_name, tau);
+		// if (!fTimerDidSleep) {
+		// 	cout << "Warning: timer underflow! dt: " << loop_dt << "\n";
+		// }
 
+		// update kinematic models
+		robot->updateModel();
+
+		// ------------------------------------
+
+		// - find operational space desired velocities
+		double dx;
+		double dy;
+		double dz;
+		double T = 5.0; //sec
+		if (phase == -1) {
+			dx = 0.0;
+			dy = 0.0;
+			dz = 0.0;
+			// pause
+			if (curr_time - phase_change_time > 2.0) {
+				phase = 0;
+				phase_change_time = curr_time;
+			}
+		} else if (phase == 0) {
+			dx = 0.0;
+			dy = -0.02;
+			dz = -0.1;
+			if (curr_time - phase_change_time > 1.0) {
+				phase = 1;
+				phase_change_time = curr_time;
+			}
+		} else if (phase == 1) {
+			dx = 0.05;
+			dy = 0.0;
+			dz = 0.0;
+			if (curr_time - phase_change_time > 4.0) {
+				phase = 2;
+				phase_change_time = curr_time;
+			}
+		} else if (phase == 2) {
+			dx = 0.0;
+			dy = 0.02;
+			dz = 0.1;
+			if (curr_time - phase_change_time > 1.0) {
+				phase = 3;
+				phase_change_time = curr_time;
+			}
+		} else if (phase == 3) {
+			dx = -0.1;
+			dy = 0.0;
+			dz = 0.0;
+			if (curr_time - phase_change_time > 2.0) {
+				phase = 0;
+				phase_change_time = curr_time;
+			}
+		} else {
+			dx = 0.0;
+			dy = 0.0;
+			dz = 0.0;
+		}
+		// - calculate omega. Note that we use the quaternion form of the E+ matrix here
+		Eigen::Vector3d omega = Eigen::Vector3d::Zero();
+		// - obtain basic Jacobian at the end-effector frame.
+		// - Note: we are using the switched Jacobian [Jw' Jv']' here.
+		robot->J(J0, ee_link_name, ee_link_pos);
+		// - assemble operational space velocity
+		opspace_vel << omega.x(), omega.y(), omega.z(), dx, dy, dz;
+		// - calculate the inertia weighted pseudo-inverse of J0
+		Jbar = robot->_M_inv * J0.transpose() * (J0 * robot->_M_inv * J0.transpose()).inverse();
+		// - finally, calculate the desired joint velocities to achieve the desired operational space
+		// velocity
+		robot->_dq = Jbar*opspace_vel;
 		// -------------------------------------------
 
 		// update last time
@@ -192,7 +269,7 @@ void simulation(Sai2Model::Sai2Model* robot, Simulation::Sai2Simulation* sim) {
 		double curr_time = timer.elapsedTime();
 		double loop_dt = curr_time - last_time;
 		if (!f_global_sim_pause) {
-			sim->integrate(loop_dt);
+			// sim->integrate(loop_dt);
 		}
 
 		// if (!fTimerDidSleep) {
@@ -266,16 +343,6 @@ void keySelect(GLFWwindow* window, int key, int scancode, int action, int mods)
     if ((key == '2') && action == GLFW_PRESS)
     {
         // change camera
-        camera_name = "camera_side";
-    }
-    if ((key == '3') && action == GLFW_PRESS)
-    {
-        // change camera
         camera_name = "camera_top";
-    }
-    if ((key == '4') && action == GLFW_PRESS)
-    {
-        // change camera
-        camera_name = "camera_isometric";
     }
 }
