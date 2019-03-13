@@ -7,6 +7,7 @@
 #include <Eigen/Dense>
 typedef Eigen::Matrix<double, 6, 1> Vector6d;
 #include "chai3d.h"
+#include "ForceFilter.h"
 
 #include <iostream>
 #include <string>
@@ -78,6 +79,7 @@ int main() {
 	// flags
 	bool robot_ready = false;
 	bool first_haptic_iteration = false;
+	bool is_in_contact = false;
 
 	// cache
 	Eigen::Vector3d des_pos, curr_robot_pos; des_pos.setZero(); curr_robot_pos.setZero();
@@ -89,9 +91,16 @@ int main() {
 	Eigen::Vector3d haptic_pos; haptic_pos.setZero();
 	Eigen::Matrix3d haptic_rot; haptic_rot.setIdentity();
 	Vector6d force; force.setZero();
+	Eigen::Vector3d haptic_force;
+
+	vector<string> ret_str(3);
+
+	// force filter
+	ForceFilter<4, 3> ffilter;
+	ffilter = ForceFilter<4, 3>(Eigen::Vector4d(0.25, 0.25, 0.25, 0.25), 0.001);
 
 	// parameters
-	const double haptic_to_robot_pos_scaling = 4.0;
+	const double haptic_to_robot_pos_scaling = 6.0;
 	const double haptic_to_robot_rot_scaling = 1.0;
 	Eigen::Matrix3d haptic_to_robot_rotation_frame;
 	haptic_to_robot_rotation_frame.setIdentity(); // TODO: set this based on actual scenario, camera
@@ -111,10 +120,13 @@ int main() {
 		timer.waitForNextLoop();
 
 		// read from Redis
-		robot->_q = redis_client.getEigenMatrixJSON(RKEY_IIWA_JOINT_POS);
-		robot->_dq = redis_client.getEigenMatrixJSON(RKEY_IIWA_JOINT_VEL);
-		force = redis_client.getEigenMatrixJSON(RKEY_IIWA_FORCE);
+		ret_str = redis_client.pipeget({RKEY_IIWA_JOINT_POS, RKEY_IIWA_JOINT_VEL, RKEY_IIWA_FORCE});
+		robot->_q = RedisClient::decodeEigenMatrixJSON(ret_str[0]);
+		robot->_dq = RedisClient::decodeEigenMatrixJSON(ret_str[1]);
+		force = RedisClient::decodeEigenMatrixJSON(ret_str[2]);
 		// TODO: gravity compensate force sensor data
+		// TODO: transform force to correct frame
+		is_in_contact = (force.head(3).norm() > 1.0);
 
 		// update the model 20 times slower or when task hierarchy changes
 		if(controller_counter%20 == 0) {
@@ -135,6 +147,8 @@ int main() {
 		////////////////////////////// Compute feedback force for haptic device, set position for robot
 		switch (state) {
 			case HapticState::WaitForRobot:
+				// set zero haptic force
+				hapticDevice->setForce(cVector3d(0, 0, 0));
 				// read robot ready
 				if(controller_counter%200 == 0) {
 					try {
@@ -163,8 +177,24 @@ int main() {
 				// update desired position, orientation
 				des_pos = haptic_pos*haptic_to_robot_pos_scaling;
 				des_pos = robot_wspace_pos + haptic_to_robot_rotation_frame*des_pos;
-				redis_client.setEigenMatrixJSON(RKEY_IIWA_DES_POS, des_pos);
-				redis_client.setEigenMatrixJSON(RKEY_IIWA_DES_ORI, des_rot);
+				redis_client.pipeset({
+					{RKEY_IIWA_DES_POS, RedisClient::encodeEigenMatrixJSON(des_pos)},
+					{RKEY_IIWA_DES_ORI, RedisClient::encodeEigenMatrixJSON(des_rot)}
+				});
+				// redis_client.setEigenMatrixJSON(RKEY_IIWA_DES_POS, des_pos);
+				// redis_client.setEigenMatrixJSON(RKEY_IIWA_DES_ORI, des_rot);
+				// set haptic device force
+				robot->position(curr_robot_pos, oppoint_link_name, oppoint_pos_in_link);
+				robot->rotation(curr_robot_rot, oppoint_link_name);
+				haptic_force = haptic_to_robot_rotation_frame.transpose()*(curr_robot_pos - des_pos);
+				if (!is_in_contact) {
+					haptic_force *= 50.0;
+				} else {
+					haptic_force *= 150.0;
+				}
+				ffilter.addSample(haptic_force);
+				// cout << haptic_force.norm() << endl;
+				hapticDevice->setForce(cVector3d(ffilter.filteredSample()));
 				// TODO: check for force sensor failure
 				if (first_haptic_iteration) {
 					// send ack the first time after setting desired position

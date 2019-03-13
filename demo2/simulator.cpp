@@ -3,6 +3,7 @@
 #include "Sai2Simulation.h"
 #include "redis/RedisClient.h"
 #include "timer/LoopTimer.h"
+#include "force_sensor/ForceSensorSim.h"
 
 #include <iostream>
 #include <string>
@@ -41,6 +42,7 @@ int main(int argc, char** argv) {
 
 	// load simulation world
 	auto sim = new Simulation::Sai2Simulation(world_fname, false);
+	sim->setCollisionRestitution(0.0);
 
 	// load robots
 	auto robot = new Sai2Model::Sai2Model(robot_fname, false);
@@ -62,9 +64,17 @@ int main(int argc, char** argv) {
 	redis_client.setEigenMatrixJSON(RKEY_IIWA_DES_TORQUE, robot_torques);
 	// redis_client.setEigenMatrixJSON(JOINT_INTERACTION_TORQUES_COMMANDED_KEY, robot_torques_interact);
 
+	// create an operational point force sensor
+	Eigen::Affine3d transform_in_link = Eigen::Affine3d::Identity();
+	transform_in_link.translation() = Eigen::Vector3d(0.01, 0.0, 0.44);
+	auto force_sensor = ForceSensorSim(robot_name, "link6", transform_in_link, robot);
+	force_sensor.enableFilter(0.1);
+
 	double time_sensor_last = timer.elapsedTime();
 	const double SENSOR_WRITE_FREQ = 1000;
 	Eigen::VectorXd gravity(robot->dof());
+	Eigen::Vector3d force, moment;
+	Eigen::Matrix<double, 6, 1> force6d;
 	while (runloop) {
 		// wait for next scheduled loop
 		timer.waitForNextLoop();
@@ -82,12 +92,19 @@ int main(int argc, char** argv) {
 		sim->getJointPositions(robot_name, robot->_q);
 		sim->getJointVelocities(robot_name, robot->_dq);
 		robot->updateModel();
+
+		// update force sensor
+		force_sensor.update(sim);
 		
 		double time_sensor = timer.elapsedTime();
 		if (time_sensor - time_sensor_last >= 1.0 / SENSOR_WRITE_FREQ) {
+			force_sensor.getForce(force);
+			force_sensor.getMoment(moment);
+			force6d << force, moment;
 			// write joint kinematics to redis
 			redis_client.setEigenMatrixJSON(RKEY_IIWA_JOINT_POS, robot->_q);
 			redis_client.setEigenMatrixJSON(RKEY_IIWA_JOINT_VEL, robot->_dq);
+			redis_client.setEigenMatrixJSON(RKEY_IIWA_FORCE, force6d);
 
 			// redis_client.setCommandIs(SIM_TIMESTAMP_KEY, std::to_string(timer.elapsedSimTime()));
 			time_sensor_last = time_sensor;

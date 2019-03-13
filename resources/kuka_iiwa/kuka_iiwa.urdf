@@ -161,12 +161,18 @@
         <visual>
             <origin xyz="0.01 0.0 0.44" rpy="0 0 0" />
             <geometry>
-                <sphere radius="0.01" />
+                <sphere radius="0.005" />
             </geometry>
             <material name="material_red">
                 <color rgba="0.5 0.0 0.0 1.0" />
             </material>
         </visual>
+        <collision>
+            <origin xyz="0.01 0.0 0.44" rpy="0 0 0" />
+            <geometry>
+                <sphere radius="0.005" />
+            </geometry>
+        </collision>
     </link>
     <joint name="j0" type="revolute">
         <parent link="base_link" />

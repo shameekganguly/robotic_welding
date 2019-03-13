@@ -78,7 +78,7 @@ bool isPosOriChangeSafe(
 	const Eigen::Matrix3d& curr_ori
 ) {
 	const double pos_change_thresh = 0.1; // 10 cm
-	const double ori_change_thresh = 5.0 * M_PI/180.0; // 5 degrees
+	const double ori_change_thresh = 10.0 * M_PI/180.0; // 10 degrees
 	bool ret_flag = true;
 	if ((curr_pos - des_pos).norm() > pos_change_thresh) {
 		cerr << "Haptic device position update exceeded threshold: " << pos_change_thresh << endl;
@@ -111,7 +111,7 @@ int main() {
 	// home position of robot, TODO: update from teach pendant
 	Eigen::VectorXd IIWA_HOME_POS(robot->dof());
 	// joint angles in radians
-	IIWA_HOME_POS << 125.9/180.0*M_PI,
+	IIWA_HOME_POS << 115.9/180.0*M_PI,
 				39.2/180.0*M_PI,
 				-49.2/180.0*M_PI,
 				70.0/180.0*M_PI,
@@ -145,16 +145,16 @@ int main() {
 	joint_task->_desired_position = IIWA_HOME_POS;
 
 	// posori controller
-	// TODO: set op space task link name, position in link
+	// set op space task link name, position in link
 	const string oppoint_link_name = "link6";
 	const Eigen::Vector3d oppoint_pos_in_link = Eigen::Vector3d(0.01, 0.0, 0.44);
 	// TODO: set desired orientation
 
 	auto oppoint_task = new Sai2Primitives::PosOriTask(robot, oppoint_link_name, oppoint_pos_in_link);
 	Eigen::VectorXd oppoint_task_torques = Eigen::VectorXd::Zero(dof);
-	oppoint_task->_kp_pos = 200.0;
-	oppoint_task->_kv_pos = 30.0;
-	oppoint_task->_kp_ori = 200.0;
+	oppoint_task->_kp_pos = 500.0;
+	oppoint_task->_kv_pos = 15.0;
+	oppoint_task->_kp_ori = 500.0;
 	oppoint_task->_kv_ori = 30.0;
 
 	// controller states:
@@ -189,8 +189,9 @@ int main() {
 		// read from Redis
 		robot->_q = redis_client.getEigenMatrixJSON(RKEY_IIWA_JOINT_POS);
 		robot->_dq = redis_client.getEigenMatrixJSON(RKEY_IIWA_JOINT_VEL);
-		force = redis_client.getEigenMatrixJSON(RKEY_IIWA_FORCE);
+		// force = redis_client.getEigenMatrixJSON(RKEY_IIWA_FORCE);
 		// TODO: gravity compensate force sensor data
+		// TODO: transform force to correct frame
 
 		// update the model 20 times slower or when task hierarchy changes
 		if(controller_counter%20 == 0 || f_update_task_models) {

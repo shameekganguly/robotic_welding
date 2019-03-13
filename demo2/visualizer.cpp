@@ -6,6 +6,7 @@
 #include "Sai2Graphics.h"
 #include "redis/RedisClient.h"
 #include "uiforce/UIForceWidget.h"
+#include "timer/LoopTimer.h"
 
 #include <GLFW/glfw3.h> //must be loaded after loading opengl/glew
 
@@ -24,6 +25,11 @@ string camera_name = "camera_front";
 // Redis keys
 const string RKEY_IIWA_JOINT_POS = "sai2::iiwaForceControl::iiwaBot::sensors::q"; // read from sim/ driver
 const string RKEY_IIWA_JOINT_VEL = "sai2::iiwaForceControl::iiwaBot::sensors::dq"; // read from sim/ driver
+
+#include <signal.h>
+bool runloop = true;
+unsigned long long controller_counter = 0;
+void sighandler(int sig) { runloop = false;}
 
 // initialize window manager
 GLFWwindow* glfwInitialize();
@@ -86,7 +92,18 @@ int main(int argc, char** argv) {
 	Eigen::VectorXd interaction_torques;
 
     // while window is open:
-    while (!glfwWindowShouldClose(window)) {
+    // create a loop timer
+	double update_freq = 30;
+	LoopTimer timer;
+	timer.setLoopFrequency(update_freq);   // 30Hz
+	timer.setCtrlCHandler(sighandler);    // exit while loop on ctrl-c
+
+	// while window is open:
+	double start_time = timer.elapsedTime();
+    while (!glfwWindowShouldClose(window) && runloop) {
+    	// wait for next scheduled loop
+		timer.waitForNextLoop();
+
 		// read from Redis
 		robot->_q = redis_client.getEigenMatrixJSON(RKEY_IIWA_JOINT_POS);
 		robot->_dq = redis_client.getEigenMatrixJSON(RKEY_IIWA_JOINT_VEL);
