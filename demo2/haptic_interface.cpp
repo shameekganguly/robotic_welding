@@ -48,7 +48,7 @@ int main() {
 	// load robots
 	auto robot = new Sai2Model::Sai2Model(robot_fname, false);
 	const string oppoint_link_name = "link6";
-	const Eigen::Vector3d oppoint_pos_in_link = Eigen::Vector3d(0,0,0.2);
+	const Eigen::Vector3d oppoint_pos_in_link = Eigen::Vector3d(0.01, 0.0, 0.44);
 
 	// write not_ready to redis
 	redis_client.set(RKEY_HAPTIC_READY, std::to_string(0));

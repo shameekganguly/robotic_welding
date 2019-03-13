@@ -147,7 +147,7 @@ int main() {
 	// posori controller
 	// TODO: set op space task link name, position in link
 	const string oppoint_link_name = "link6";
-	const Eigen::Vector3d oppoint_pos_in_link = Eigen::Vector3d(0,0,0.2);
+	const Eigen::Vector3d oppoint_pos_in_link = Eigen::Vector3d(0.01, 0.0, 0.44);
 	// TODO: set desired orientation
 
 	auto oppoint_task = new Sai2Primitives::PosOriTask(robot, oppoint_link_name, oppoint_pos_in_link);
