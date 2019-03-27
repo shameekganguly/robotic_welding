@@ -152,9 +152,9 @@ int main() {
 
 	auto oppoint_task = new Sai2Primitives::PosOriTask(robot, oppoint_link_name, oppoint_pos_in_link);
 	Eigen::VectorXd oppoint_task_torques = Eigen::VectorXd::Zero(dof);
-	oppoint_task->_kp_pos = 500.0;
-	oppoint_task->_kv_pos = 15.0;
-	oppoint_task->_kp_ori = 500.0;
+	oppoint_task->_kp_pos = 200.0;
+	oppoint_task->_kv_pos = 30.0;
+	oppoint_task->_kp_ori = 200.0;
 	oppoint_task->_kv_ori = 30.0;
 
 	// controller states:

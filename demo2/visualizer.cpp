@@ -97,6 +97,7 @@ int main(int argc, char** argv) {
 	LoopTimer timer;
 	timer.setLoopFrequency(update_freq);   // 30Hz
 	timer.setCtrlCHandler(sighandler);    // exit while loop on ctrl-c
+	timer.initializeTimer(1e6); // 10 ms pause before starting loop
 
 	// while window is open:
 	double start_time = timer.elapsedTime();
@@ -210,6 +211,12 @@ int main(int argc, char** argv) {
 		// //write to redis
 		// redis_client.setEigenMatrixDerivedString(JOINT_INTERACTION_TORQUES_COMMANDED_KEY, interaction_torques);
 	}
+
+	double end_time = timer.elapsedTime();
+    std::cout << "\n";
+    std::cout << "Loop run time  : " << end_time << " seconds\n";
+    std::cout << "Loop updates   : " << timer.elapsedCycles() << "\n";
+    std::cout << "Loop frequency : " << timer.elapsedCycles()/end_time << "Hz\n";
 
     // destroy context
     glfwDestroyWindow(window);

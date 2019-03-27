@@ -96,12 +96,16 @@ int main() {
 	vector<string> ret_str(3);
 
 	// force filter
-	ForceFilter<4, 3> ffilter;
-	ffilter = ForceFilter<4, 3>(Eigen::Vector4d(0.25, 0.25, 0.25, 0.25), 0.001);
+	const uint filter_order = 10;
+	ForceFilter<filter_order, 3> ffilter;
+	auto filter_coeffs = ForceFilter<filter_order, 3>::CoeffFd::Ones()*(1.0/filter_order);
+	ffilter = ForceFilter<filter_order, 3>(filter_coeffs, 0.001);
 
 	// parameters
 	const double haptic_to_robot_pos_scaling = 6.0;
 	const double haptic_to_robot_rot_scaling = 1.0;
+	const double haptic_imped_force_scaling_free_space = 10.0;
+	const double haptic_imped_force_scaling_contact = 50.0;
 	Eigen::Matrix3d haptic_to_robot_rotation_frame;
 	haptic_to_robot_rotation_frame.setIdentity(); // TODO: set this based on actual scenario, camera
 
@@ -188,9 +192,9 @@ int main() {
 				robot->rotation(curr_robot_rot, oppoint_link_name);
 				haptic_force = haptic_to_robot_rotation_frame.transpose()*(curr_robot_pos - des_pos);
 				if (!is_in_contact) {
-					haptic_force *= 50.0;
+					haptic_force *= haptic_imped_force_scaling_free_space;
 				} else {
-					haptic_force *= 150.0;
+					haptic_force *= haptic_imped_force_scaling_contact;
 				}
 				ffilter.addSample(haptic_force);
 				// cout << haptic_force.norm() << endl;

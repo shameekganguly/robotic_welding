@@ -43,6 +43,8 @@ int main(int argc, char** argv) {
 	// load simulation world
 	auto sim = new Simulation::Sai2Simulation(world_fname, false);
 	sim->setCollisionRestitution(0.0);
+	sim->setCoeffFrictionStatic(0.6);
+	sim->setCoeffFrictionDynamic(0.5);
 
 	// load robots
 	auto robot = new Sai2Model::Sai2Model(robot_fname, false);
@@ -111,5 +113,12 @@ int main(int argc, char** argv) {
 		}
 
 	}
+
+	double end_time = timer.elapsedTime();
+    std::cout << "\n";
+    std::cout << "Loop run time  : " << end_time << " seconds\n";
+    std::cout << "Loop updates   : " << timer.elapsedCycles() << "\n";
+    std::cout << "Loop frequency : " << timer.elapsedCycles()/end_time << "Hz\n";
+
 	return 0;
 }
