@@ -16,8 +16,8 @@ using namespace std;
 using namespace chai3d;
 
 // Redis keys
-const string RKEY_IIWA_JOINT_POS = "sai2::iiwaForceControl::iiwaBot::sensors::q"; // read from sim/ driver
-const string RKEY_IIWA_JOINT_VEL = "sai2::iiwaForceControl::iiwaBot::sensors::dq"; // read from sim/ driver
+const string RKEY_IIWA_JOINT_POS = "sai2::KUKA_IIWA::sensors::q"; // read from sim/ driver
+const string RKEY_IIWA_JOINT_VEL = "sai2::KUKA_IIWA::sensors::dq"; // read from sim/ driver
 const string RKEY_IIWA_FORCE = "sai2::optoforceSensor::6Dsensor::force"; // read from OptoForce driver/ simulator
 const string RKEY_HAPTIC_READY = "sai2::iiwaForceControl::iiwaBot::haptic::device_ready"; // read from haptic device to indicate haptic device ready
 const string RKEY_IIWA_READY = "sai2::iiwaForceControl::iiwaBot::haptic::robot_ready"; // sent to haptic device to indicate robot ready
@@ -35,6 +35,27 @@ bool runloop = true;
 unsigned long long controller_counter = 0;
 void sighandler(int sig) { runloop = false;}
 
+// force sensor calibration
+// NOTE: We only calibrate and return the measured force right now, not the moment
+void calibrated_force(const Vector6d& raw_force, const Eigen::Matrix3d& ee_ori, Eigen::Vector3d* calib_force) {
+	// orientation offset from sensor to ee
+	Eigen::Matrix3d ori_sensor_ee;
+	double rot_ee_sensor = -90.0*M_PI/180.0; // measured from hardware setup
+	ori_sensor_ee << cos(rot_ee_sensor), -sin(rot_ee_sensor), 0.0,
+					sin(rot_ee_sensor), cos(rot_ee_sensor), 0.0,
+						0.0,			0.0,				1.0;
+	Eigen::Vector3d sensor_force_bias;
+	sensor_force_bias << -12.9,  -1.0, -28.0;
+	double tool_mass = 2.35;
+	// pseudocode:
+	// temp1 = sensor_force - bias
+	// temp2 = ori_ee_world*ori_sensor_ee*temp1;
+	// calib_force = temp2 - gravity_ee;
+
+	// Assume calib_force not null. should be a pass by reference
+	*calib_force = ee_ori*ori_sensor_ee*(raw_force.head(3) - sensor_force_bias) - tool_mass*Eigen::Vector3d(0.0, 0.0, -9.8);
+}
+
 int main() {
 	cout << "Loading URDF world model file: " << world_fname << endl;
 
@@ -49,7 +70,7 @@ int main() {
 	// load robots
 	auto robot = new Sai2Model::Sai2Model(robot_fname, false);
 	const string oppoint_link_name = "link6";
-	const Eigen::Vector3d oppoint_pos_in_link = Eigen::Vector3d(0.01, 0.0, 0.44);
+	const Eigen::Vector3d oppoint_pos_in_link = Eigen::Vector3d(0.0, 0.0, 0.42774);
 
 	// write not_ready to redis
 	redis_client.set(RKEY_HAPTIC_READY, std::to_string(0));
@@ -90,7 +111,8 @@ int main() {
 	chai3d::cMatrix3d raw_rot;
 	Eigen::Vector3d haptic_pos; haptic_pos.setZero();
 	Eigen::Matrix3d haptic_rot; haptic_rot.setIdentity();
-	Vector6d force; force.setZero();
+	Vector6d raw_force;
+	Eigen::Vector3d force; force.setZero();
 	Eigen::Vector3d haptic_force;
 
 	vector<string> ret_str(3);
@@ -102,7 +124,7 @@ int main() {
 	ffilter = ForceFilter<filter_order, 3>(filter_coeffs, 0.001);
 
 	// parameters
-	const double haptic_to_robot_pos_scaling = 6.0;
+	const double haptic_to_robot_pos_scaling = 1.0;
 	const double haptic_to_robot_rot_scaling = 1.0;
 	const double haptic_imped_force_scaling_free_space = 10.0;
 	const double haptic_imped_force_scaling_contact = 50.0;
@@ -115,7 +137,7 @@ int main() {
 	timer.setLoopFrequency(control_freq);   // 1 KHz
 	// timer.setThreadHighPriority();  // make timing more accurate. requires running executable as sudo.
 	timer.setCtrlCHandler(sighandler);    // exit while loop on ctrl-c
-	timer.initializeTimer(1000000); // 1 ms pause before starting loop
+	timer.initializeTimer(3000000000); // 3 s pause before starting loop
 
 	// while window is open:
 	double start_time = timer.elapsedTime();
@@ -127,10 +149,17 @@ int main() {
 		ret_str = redis_client.pipeget({RKEY_IIWA_JOINT_POS, RKEY_IIWA_JOINT_VEL, RKEY_IIWA_FORCE});
 		robot->_q = RedisClient::decodeEigenMatrixJSON(ret_str[0]);
 		robot->_dq = RedisClient::decodeEigenMatrixJSON(ret_str[1]);
-		force = RedisClient::decodeEigenMatrixJSON(ret_str[2]);
-		// TODO: gravity compensate force sensor data
-		// TODO: transform force to correct frame
-		is_in_contact = (force.head(3).norm() > 1.0);
+		robot->position(curr_robot_pos, oppoint_link_name, oppoint_pos_in_link);
+		robot->rotation(curr_robot_rot, oppoint_link_name);
+		raw_force = RedisClient::decodeEigenMatrixJSON(ret_str[2]);
+		calibrated_force(raw_force, curr_robot_rot, &force);
+		double contact_thresh = 3.5; //N
+		is_in_contact = (force.norm() > contact_thresh);
+		// if(controller_counter%1000 == 0) {
+		// 	cout << "Raw force: " << raw_force.head(3).transpose() << " "
+		// 		<< "Calib force: " << force.transpose() << " "
+		// 		<< "Calib force norm: " << force.norm() << endl;
+		// }
 
 		// update the model 20 times slower or when task hierarchy changes
 		if(controller_counter%20 == 0) {
@@ -185,8 +214,6 @@ int main() {
 					{RKEY_IIWA_DES_POS, RedisClient::encodeEigenMatrixJSON(des_pos)},
 					{RKEY_IIWA_DES_ORI, RedisClient::encodeEigenMatrixJSON(des_rot)}
 				});
-				// redis_client.setEigenMatrixJSON(RKEY_IIWA_DES_POS, des_pos);
-				// redis_client.setEigenMatrixJSON(RKEY_IIWA_DES_ORI, des_rot);
 				// set haptic device force
 				robot->position(curr_robot_pos, oppoint_link_name, oppoint_pos_in_link);
 				robot->rotation(curr_robot_rot, oppoint_link_name);

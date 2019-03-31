@@ -5,7 +5,7 @@
 #include "Sai2Model.h"
 #include "Sai2Graphics.h"
 #include "redis/RedisClient.h"
-#include "uiforce/UIForceWidget.h"
+// #include "uiforce/UIForceWidget.h"
 #include "timer/LoopTimer.h"
 
 #include <GLFW/glfw3.h> //must be loaded after loading opengl/glew
@@ -23,8 +23,8 @@ string camera_name = "camera_front";
 
 
 // Redis keys
-const string RKEY_IIWA_JOINT_POS = "sai2::iiwaForceControl::iiwaBot::sensors::q"; // read from sim/ driver
-const string RKEY_IIWA_JOINT_VEL = "sai2::iiwaForceControl::iiwaBot::sensors::dq"; // read from sim/ driver
+const string RKEY_IIWA_JOINT_POS = "sai2::KUKA_IIWA::sensors::q"; // read from sim/ driver
+const string RKEY_IIWA_JOINT_VEL = "sai2::KUKA_IIWA::sensors::dq"; // read from sim/ driver
 
 #include <signal.h>
 bool runloop = true;
@@ -74,8 +74,8 @@ int main(int argc, char** argv) {
 	auto robot = new Sai2Model::Sai2Model(robot_fname, false);
 
 	// create a UI widget to apply mouse forces to the robot
-	UIForceWidget force_widget(robot_name, robot, graphics);
-	force_widget.setEnable(false);
+	// UIForceWidget force_widget(robot_name, robot, graphics);
+	// force_widget.setEnable(false);
 
 	/*------- Set up visualization -------*/
 	// initialize GLFW window
@@ -183,31 +183,31 @@ int main(int argc, char** argv) {
 	    }
 	    graphics->setCameraPose(camera_name, camera_pos, cam_up_axis, camera_lookat);
 	    glfwGetCursorPos(window, &last_cursorx, &last_cursory);
-	    if (fRobotLinkSelect) {
-			//activate widget
-			force_widget.setEnable(true);
-			// get current cursor position
-			double cursorx, cursory;
-			glfwGetCursorPos(window, &cursorx, &cursory);
-			int wwidth_scr, wheight_scr;
-			int wwidth_pix, wheight_pix;
-			glfwGetWindowSize(window, &wwidth_scr, &wheight_scr);
-			glfwGetFramebufferSize(window, &wwidth_pix, &wheight_pix);
-			int viewx, viewy;
-			viewx = floor(cursorx/wwidth_scr * wwidth_pix);
-			viewy = floor(cursory/wheight_scr * wheight_pix);
-			std::string ret_link_name;
-			Eigen::Vector3d ret_pos;
-			if (cursorx > 0 && cursory > 0) {
-				force_widget.setInteractionParams(camera_name, viewx, wheight_pix-viewy, wwidth_pix, wheight_pix);
-				//TODO: this behavior might be wrong. this will allow the user to click elsewhere in the screen
-				// then drag the mouse over a link to start applying a force to it.
-			}
-	    } else {
-			force_widget.setEnable(false);
-	    }
-		// get UI torques
-		force_widget.getUIJointTorques(interaction_torques);
+	 //    if (fRobotLinkSelect) {
+		// 	//activate widget
+		// 	force_widget.setEnable(true);
+		// 	// get current cursor position
+		// 	double cursorx, cursory;
+		// 	glfwGetCursorPos(window, &cursorx, &cursory);
+		// 	int wwidth_scr, wheight_scr;
+		// 	int wwidth_pix, wheight_pix;
+		// 	glfwGetWindowSize(window, &wwidth_scr, &wheight_scr);
+		// 	glfwGetFramebufferSize(window, &wwidth_pix, &wheight_pix);
+		// 	int viewx, viewy;
+		// 	viewx = floor(cursorx/wwidth_scr * wwidth_pix);
+		// 	viewy = floor(cursory/wheight_scr * wheight_pix);
+		// 	std::string ret_link_name;
+		// 	Eigen::Vector3d ret_pos;
+		// 	if (cursorx > 0 && cursory > 0) {
+		// 		force_widget.setInteractionParams(camera_name, viewx, wheight_pix-viewy, wwidth_pix, wheight_pix);
+		// 		//TODO: this behavior might be wrong. this will allow the user to click elsewhere in the screen
+		// 		// then drag the mouse over a link to start applying a force to it.
+		// 	}
+	 //    } else {
+		// 	force_widget.setEnable(false);
+	 //    }
+		// // get UI torques
+		// force_widget.getUIJointTorques(interaction_torques);
 		// //write to redis
 		// redis_client.setEigenMatrixDerivedString(JOINT_INTERACTION_TORQUES_COMMANDED_KEY, interaction_torques);
 	}

@@ -13,14 +13,14 @@ typedef Eigen::Matrix<double, 6, 1> Vector6d;
 using namespace std;
 
 // Redis keys
-const string RKEY_IIWA_JOINT_POS = "sai2::iiwaForceControl::iiwaBot::sensors::q"; // read from sim/ driver
-const string RKEY_IIWA_JOINT_VEL = "sai2::iiwaForceControl::iiwaBot::sensors::dq"; // read from sim/ driver
+const string RKEY_IIWA_JOINT_POS = "sai2::KUKA_IIWA::sensors::q"; // read from sim/ driver
+const string RKEY_IIWA_JOINT_VEL = "sai2::KUKA_IIWA::sensors::dq"; // read from sim/ driver
 const string RKEY_IIWA_FORCE = "sai2::optoforceSensor::6Dsensor::force"; // read from OptoForce driver/ simulator
 // const string RKEY_IIWA_FORCE = "sai2::iiwaForceControl::iiwaBot::simulation::sensors::force_sensor::force";
 const string RKEY_IIWA_DES_POS = "sai2::iiwaForceControl::iiwaBot::haptic::xp_des"; // read from haptic device
 const string RKEY_IIWA_DES_ORI = "sai2::iiwaForceControl::iiwaBot::haptic::xr_des"; // read from haptic device
 const string RKEY_IIWA_DES_VEL = "sai2::iiwaForceControl::iiwaBot::haptic::dx_des"; // Not used currently
-const string RKEY_IIWA_DES_TORQUE = "sai2::iiwaForceControl::iiwaBot::actuators::fgc"; // write to sim/ driver
+const string RKEY_IIWA_DES_TORQUE = "sai2::KUKA_IIWA::actuators::fgc"; // write to sim/ driver
 const string FGC_ENABLE_KEY  = "sai2::iiwaForceControl::iiwaBot::fgc_command_enabled"; // ? signal read from driver
 const string RKEY_HAPTIC_READY = "sai2::iiwaForceControl::iiwaBot::haptic::device_ready"; // read from haptic device to indicate haptic device ready
 const string RKEY_IIWA_READY = "sai2::iiwaForceControl::iiwaBot::haptic::robot_ready"; // sent to haptic device to indicate robot ready
@@ -57,7 +57,7 @@ bool isForceSensorValueGood(const Vector6d& force) { // force vector is size six
 bool isReachedHomePos(const Eigen::VectorXd& jpos_curr, const Eigen::VectorXd& jpos_des, const Eigen::VectorXd& jvel) {
 	// IIWA joint position thresholds 
 	Eigen::VectorXd iiwa_pos_thresh(jpos_curr.size());
-	iiwa_pos_thresh << 0.5, 1.0, 1.0, 2.0, 2.0, 2.0, 3.0; //degrees 
+	iiwa_pos_thresh << 1.5, 1.5, 10.0, 2.0, 2.0, 2.0, 10.0; //degrees 
 	iiwa_pos_thresh *= M_PI/180.0;
 	// IIWA joint velocity magnitude threshold
 	const double iiwa_vel_thresh = 0.003; // rad/s
@@ -111,13 +111,13 @@ int main() {
 	// home position of robot, TODO: update from teach pendant
 	Eigen::VectorXd IIWA_HOME_POS(robot->dof());
 	// joint angles in radians
-	IIWA_HOME_POS << 115.9/180.0*M_PI,
-				39.2/180.0*M_PI,
-				-49.2/180.0*M_PI,
-				70.0/180.0*M_PI,
-				0/180.0*M_PI,
-				60.2/180.0*M_PI,
-				187.2/180.0*M_PI;
+	IIWA_HOME_POS << 94.0/180.0*M_PI,
+				-31.5/180.0*M_PI,
+				-1.56/180.0*M_PI,
+				48.65/180.0*M_PI,
+				4.21/180.0*M_PI,
+				-76.57/180.0*M_PI,
+				0.0/180.0*M_PI;
 
 	// read from Redis
 	robot->_q = redis_client.getEigenMatrixJSON(RKEY_IIWA_JOINT_POS);
@@ -137,8 +137,9 @@ int main() {
 	// joint task
 	auto joint_task = new Sai2Primitives::JointTask(robot);
 	joint_task->_use_velocity_saturation_flag = true;
-	// joint_task->_kp = 100.0;
-	// joint_task->_kv = 14.0;
+	joint_task->_saturation_velocity *= 0.2;
+	joint_task->_kp = 55.0;
+	joint_task->_kv = 8.0;
 	Eigen::VectorXd joint_task_torques = Eigen::VectorXd::Zero(dof);
 
 	// set joint task desired position
@@ -147,15 +148,15 @@ int main() {
 	// posori controller
 	// set op space task link name, position in link
 	const string oppoint_link_name = "link6";
-	const Eigen::Vector3d oppoint_pos_in_link = Eigen::Vector3d(0.01, 0.0, 0.44);
+	const Eigen::Vector3d oppoint_pos_in_link = Eigen::Vector3d(0.0, 0.0, 0.42774);
 	// TODO: set desired orientation
 
 	auto oppoint_task = new Sai2Primitives::PosOriTask(robot, oppoint_link_name, oppoint_pos_in_link);
 	Eigen::VectorXd oppoint_task_torques = Eigen::VectorXd::Zero(dof);
-	oppoint_task->_kp_pos = 200.0;
-	oppoint_task->_kv_pos = 30.0;
-	oppoint_task->_kp_ori = 200.0;
-	oppoint_task->_kv_ori = 30.0;
+	oppoint_task->_kp_pos = 50.0;
+	oppoint_task->_kv_pos = 8.0;
+	oppoint_task->_kp_ori = 60.0;
+	oppoint_task->_kv_ori = 11.0;
 
 	// controller states:
 	enum ControllerState {Init, WaitForHapticDevice, Haptic, Failure};
@@ -178,7 +179,7 @@ int main() {
 	timer.setLoopFrequency(control_freq);   // 1 KHz
 	// timer.setThreadHighPriority();  // make timing more accurate. requires running executable as sudo.
 	timer.setCtrlCHandler(sighandler);    // exit while loop on ctrl-c
-	timer.initializeTimer(1000000); // 1 ms pause before starting loop
+	timer.initializeTimer(1000000000); // 1 s pause before starting loop
 
 	// while window is open:
 	double start_time = timer.elapsedTime();
@@ -196,6 +197,11 @@ int main() {
 		// update the model 20 times slower or when task hierarchy changes
 		if(controller_counter%20 == 0 || f_update_task_models) {
 			robot->updateModel();
+			// update A matrix to stiffen last joints
+			robot->_M(6,6) += 0.08;
+			robot->_M(5,5) += 0.04;
+			robot->_M(4,4) += 0.04;
+			robot->_M_inv = robot->_M.inverse();
 			f_update_task_models = true;
 		}
 
@@ -234,6 +240,8 @@ int main() {
 				joint_task->computeTorques(joint_task_torques);
 				command_torques = joint_task_torques;
 				// read haptic device ack
+				robot->position(des_pos, oppoint_link_name, oppoint_pos_in_link);
+				robot->rotation(des_rot, oppoint_link_name);
 				if(controller_counter%200 == 0) {
 					try {
 						haptic_device_ready = std::stoi(redis_client.get(RKEY_HAPTIC_READY));
@@ -254,6 +262,7 @@ int main() {
 				robot->rotation(curr_rot, oppoint_link_name);
 				if (!isPosOriChangeSafe(des_pos, curr_pos, des_rot, curr_rot)) {
 					state = ControllerState::Failure;
+					joint_task->_desired_position = IIWA_HOME_POS;
 					break;
 				}
 				oppoint_task->_desired_position = des_pos;
@@ -269,17 +278,26 @@ int main() {
 				// check for force sensor failure
 				if (!isForceSensorValueGood(force)) {
 					state = ControllerState::Failure;
+					joint_task->_desired_position = IIWA_HOME_POS;
 				}
 				break;
 			case ControllerState::Failure:
 				command_torques.setZero(dof);
 				redis_client.set(RKEY_IIWA_READY, std::to_string(0));
+				if (f_update_task_models) { // set to true when robot kinematic model is updated
+					joint_task->updateTaskModel(Eigen::MatrixXd::Identity(dof, dof));
+					f_update_task_models = false;
+				}
+				joint_task->computeTorques(joint_task_torques);
+				command_torques = joint_task_torques;
 				//TODO: if force sensor readings are good, we should switch to position control in free space with 0 force in the direction of the force sensor reading.
 				//TODO: if not, we should switch to pure joint space damping.
+
 				break;
 		}
 
 		//------ send torques to robot
+		// cout << command_torques.transpose() << endl;
 		redis_client.setEigenMatrixJSON(RKEY_IIWA_DES_TORQUE, command_torques);
 
 		controller_counter++;
