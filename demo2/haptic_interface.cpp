@@ -24,6 +24,7 @@ const string RKEY_IIWA_READY = "sai2::iiwaForceControl::iiwaBot::haptic::robot_r
 const string RKEY_HAPTIC_STATUS = "sai2::iiwaForceControl::iiwaBot::haptic::haptic_status";
 const string RKEY_IIWA_DES_POS = "sai2::iiwaForceControl::iiwaBot::haptic::xp_des"; // write to robot
 const string RKEY_IIWA_DES_ORI = "sai2::iiwaForceControl::iiwaBot::haptic::xr_des"; // write to robot
+const string RKEY_HAPTIC_FORCE_CALIB = "sai2::iiwaForceControl::iiwaBot::haptic::calib_force";
 
 // models
 const string world_fname = "resources/world.urdf";
@@ -170,6 +171,7 @@ int main() {
 		if(controller_counter%200 == 0) {
 			// write status to redis
 			redis_client.set(RKEY_HAPTIC_STATUS, to_string(state));
+			redis_client.setEigenMatrixJSON(RKEY_HAPTIC_FORCE_CALIB, force);
 		}
 
 		// read haptic device position

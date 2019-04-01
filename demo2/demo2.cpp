@@ -137,8 +137,8 @@ int main() {
 	// joint task
 	auto joint_task = new Sai2Primitives::JointTask(robot);
 	joint_task->_use_velocity_saturation_flag = true;
-	joint_task->_saturation_velocity *= 0.2;
-	joint_task->_kp = 55.0;
+	joint_task->_saturation_velocity *= 0.25;
+	joint_task->_kp = 65.0;
 	joint_task->_kv = 8.0;
 	Eigen::VectorXd joint_task_torques = Eigen::VectorXd::Zero(dof);
 
