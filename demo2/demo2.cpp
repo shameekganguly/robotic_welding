@@ -27,7 +27,6 @@ const string RKEY_IIWA_READY = "sai2::iiwaForceControl::iiwaBot::haptic::robot_r
 const string RKEY_IIWA_CTRL_STATUS = "sai2::iiwaForceControl::iiwaBot::ctrl_status"; // controller state machine status
 
 // models
-const string world_fname = "resources/world.urdf";
 const string robot_fname = "../resources/kuka_iiwa/kuka_iiwa.urdf";
 const string robot_name = "IIWA";
 
@@ -96,7 +95,7 @@ bool isPosOriChangeSafe(
 }
 
 int main() {
-	cout << "Loading URDF world model file: " << world_fname << endl;
+	cout << "Loading URDF robot model file: " << robot_fname << endl;
 
 	auto redis_client = RedisClient();
 	redis_client.connect();

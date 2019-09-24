@@ -24,7 +24,7 @@ bool runloop = true;
 void sighandler(int sig)
 { runloop = false; }
 
-const string world_fname = "resources/world.urdf";
+const string world_fname = "resources/world2.urdf";
 const string robot_fname = "../resources/kuka_iiwa/kuka_iiwa.urdf";
 const string robot_name = "IIWA";
 

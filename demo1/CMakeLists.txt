@@ -8,7 +8,7 @@ TARGET_LINK_LIBRARIES (demo1 ${COMMON_LIBRARIES})
 SET(RESOURCE_DIR ${BINARY_DIR}/resources)
 FILE(MAKE_DIRECTORY ${RESOURCE_DIR})
 FILE(COPY 
-	world.urdf
+	world1.urdf
 	v\ groove\ butt\ welding\ piece.mtl
 	v\ groove\ butt\ welding\ piece.obj
 	DESTINATION ${RESOURCE_DIR}

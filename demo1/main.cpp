@@ -24,7 +24,7 @@ Date: 10/22/18
 using namespace std;
 using namespace Eigen;
 
-const string world_fname = "resources/world.urdf";
+const string world_fname = "resources/world1.urdf";
 const string robot_fname = "../resources/kuka_iiwa/kuka_iiwa.urdf";
 const string robot_name = "IIWA";
 // string camera_name = "camera_front";
