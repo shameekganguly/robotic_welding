@@ -8,6 +8,9 @@ TARGET_LINK_LIBRARIES (visualizer ${COMMON_LIBRARIES})
 TARGET_LINK_LIBRARIES (simulator ${COMMON_LIBRARIES})
 TARGET_LINK_LIBRARIES (haptic ${COMMON_LIBRARIES})
 
+ADD_EXECUTABLE (test_logger testLogger.cpp)
+TARGET_LINK_LIBRARIES (test_logger ${COMMON_LIBRARIES})
+
 # export resources such as model files.
 # NOTE: this requires an install build
 SET(RESOURCE_DIR ${BINARY_DIR}/resources)
