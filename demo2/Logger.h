@@ -17,6 +17,27 @@ namespace Logging {
 // TODO: allow user defined log formatter
 Eigen::IOFormat logVecFmt(Eigen::StreamPrecision, Eigen::DontAlignCols, ", ");
 
+// interface class
+class IEigenVector {
+public:
+	virtual void print(std::ostream& os) = 0;
+};
+
+// template class to encapsulate matrix pointer
+template <typename Derived>
+class EigenVector: public IEigenVector {
+public:
+	// ctor
+	EigenVector(Eigen::MatrixBase <Derived>* data) { _data = data;}
+	// data to encapsulate
+	Eigen::MatrixBase <Derived> * _data;
+	// implementation of pure virtual function in interface class
+	void print (std::ostream& os) {
+		 os << _data->transpose().format(logVecFmt);
+	}
+};
+
+// Logger class
 class Logger {
 public:
 	// ctor
@@ -27,12 +48,14 @@ public:
 		_logfile.open(fname, std::ios::out);
 	}
 
-	// add Eigen::VectorXd variable to watch
-	bool addVectorToLog (Eigen::VectorXd* var) {
+	// add Eigen vector type variable to watch
+	template <typename Derived>
+	bool addVectorToLog (Eigen::MatrixBase <Derived>* var) {
 		if (_f_is_logging) {
 			return false;
 		}
-		_vars_to_log.push_back(var);
+		auto e = new EigenVector<Derived>(var);
+		_vars_to_log.push_back(dynamic_cast<IEigenVector* >(e));
 		return true;
 	}
 
@@ -61,8 +84,9 @@ public:
 		_logfile.close();
 	}
 
-	// // vector of pointers to Eigen::VectorXd objects that are registered with the logger
-	std::vector<Eigen::VectorXd*> _vars_to_log;
+	// vector of pointers to encapsulated Eigen vector objects that are registered with 
+	// the logger
+	std::vector<IEigenVector *> _vars_to_log;
 
 	// state
 	bool _f_is_logging;
@@ -90,10 +114,10 @@ private:
 			auto time_diff = std::chrono::duration_cast<microseconds>(curr_time - last_time);
 			if (_log_interval_ > 0 && time_diff >= microseconds(static_cast<uint>(_log_interval_))) {
 				microseconds t_elapsed = std::chrono::duration_cast<microseconds>(curr_time - _t_start);
-				// log something
 				_logfile << t_elapsed.count();
 				for (auto iter: _vars_to_log) {
-					_logfile << ", " << (*iter).transpose().format(logVecFmt);
+					_logfile << ", ";
+					iter->print(_logfile);
 				}
 				_logfile << "\n";
 				last_time = curr_time;

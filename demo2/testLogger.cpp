@@ -13,7 +13,8 @@ int main(int argc, char ** argv) {
 	auto logger = Logger(500000, "test.txt");
 
 	// create variables for the logger to log
-	Eigen::VectorXd a1(3), a2(4);
+	Eigen::Vector3d a1;
+	Eigen::VectorXd a2(4);
 
 	// set initial values	
 	a1 << 1, 2, 3;
@@ -36,7 +37,7 @@ int main(int argc, char ** argv) {
 	a1 << 7, 8, 9;
 	a2 << 1, 0, 0, 1;
 	usleep(1e6); // 1 seconds
-	a1 << 10, 11, 12;
+	a1 << 20, 11, 12;
 	a2 << 1, 1, 0, 1;
 	usleep(1e6); // 1 seconds
 
