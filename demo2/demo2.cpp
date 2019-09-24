@@ -111,13 +111,13 @@ int main() {
 	// home position of robot, TODO: update from teach pendant
 	Eigen::VectorXd IIWA_HOME_POS(robot->dof());
 	// joint angles in radians
-	IIWA_HOME_POS << 94.0/180.0*M_PI,
-				-31.5/180.0*M_PI,
-				-1.56/180.0*M_PI,
-				48.65/180.0*M_PI,
-				4.21/180.0*M_PI,
-				-76.57/180.0*M_PI,
-				0.0/180.0*M_PI;
+	IIWA_HOME_POS << 4/180.0*M_PI,
+				-25/180.0*M_PI,
+				-2/180.0*M_PI,
+				77/180.0*M_PI,
+				6.3/180.0*M_PI,
+				-55/180.0*M_PI,
+				-84/180.0*M_PI;
 
 	// read from Redis
 	robot->_q = redis_client.getEigenMatrixJSON(RKEY_IIWA_JOINT_POS);
