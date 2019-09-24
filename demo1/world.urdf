@@ -28,7 +28,7 @@
 	    </visual>
 	</static_object>
 	<static_object name="Table">
-		<origin xyz="0.25 0.74 -0.025" rpy="0 0 0" />
+		<origin xyz="0.15 0.70 -0.025" rpy="0 0 0" />
 	    <visual>
 	        <origin xyz="0.0 0.0 0.0" rpy="0 0 0" />
 	        <geometry>
@@ -55,7 +55,7 @@
 	    </visual>
 	</static_object> -->
 	<static_object name="Horizontal fillet weld-piece">
-		<origin xyz="0.27 0.74 0.0575" rpy="0 0 1.5707" />
+		<origin xyz="0.25 0.723 0.1" rpy="0 0 1.5707" />
 	    <visual>
 	        <origin xyz="0.0 0.0 0.0" rpy="0 0 0" />
 	        <geometry>
