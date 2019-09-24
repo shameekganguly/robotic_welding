@@ -21,8 +21,8 @@ int main(int argc, char ** argv) {
 	a2 << 0, 1, 0, 1;
 
 	// add logger to track variables
-	logger.addVectorToLog(&a1);
-	logger.addVectorToLog(&a2);
+	logger.addVectorToLog(&a1, "a1");
+	logger.addVectorToLog(&a2, "a2");
 
 	// start logger
 	logger.start();

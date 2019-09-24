@@ -46,16 +46,24 @@ public:
 	{
 		// create log file
 		_logfile.open(fname, std::ios::out);
+		_logfile << "timestamp, ";
 	}
 
 	// add Eigen vector type variable to watch
 	template <typename Derived>
-	bool addVectorToLog (Eigen::MatrixBase <Derived>* var) {
+	bool addVectorToLog (Eigen::MatrixBase <Derived>* var, const std::string& var_name = "") {
 		if (_f_is_logging) {
 			return false;
 		}
 		auto e = new EigenVector<Derived>(var);
 		_vars_to_log.push_back(dynamic_cast<IEigenVector* >(e));
+		for (uint i = 0; i < var->size(); i++) {
+			if (!var_name.empty()) {
+				_logfile << var_name << "_" << i << ", ";
+			} else {
+				_logfile << "var" << _vars_to_log.size() << "_" << i << ", ";
+			}
+		}
 		return true;
 	}
 
@@ -66,6 +74,9 @@ public:
 
 		// set logging to true
 		_f_is_logging = true;
+
+		// complete header line
+		_logfile << "\n";
 
 		// start logging thread by move assignment
 		_log_thread = std::thread{&Logger::logWorker, this};
