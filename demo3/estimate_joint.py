@@ -9,30 +9,27 @@ from matplotlib import pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 import random
 import pprint
+from functools import partial
+from multiprocessing import Pool
+import time
 
 POSITION_VAR_NAME = "oppos" # 3D position vector 
 POSITION_VAR_LEN = 3
 FORCE_VAR_NAME = "force" # 6D force-torque vector
 FORCE_VAR_LEN = 3
 TORQUE_VAR_LEN = 3
-# POSITION_VAR_NAME = "a1" # 3D position vector 
-# POSITION_VAR_LEN = 3
-# FORCE_VAR_NAME = "a2" # 6D force-torque vector
-# FORCE_VAR_LEN = 4
 
 # MIN_TIME = 0
 MIN_TIME = 5000000 # 5 seconds, to get rid of data while moving arm manually
 
-# FORCE_BIAS = np.zeros(FORCE_VAR_LEN)
 FORCE_BIAS = np.array([-1.3556, 1.5259, -188.47]) # NOTE: this is configuration dependent, but we use fixed orientation
 # TORQUE_BIAS = np.array([-1.3983, 3.51893, 0.5698])
 
 # hyperparameters
 FORCE_CONTACT_THRES = 1 #N
-# FORCE_CONTACT_THRES = 1.1 #N
 INTER_POINT_THRES = 0.01 #m
 DIST_VOTE_THRES = 0.01 #m
-MAX_PLANES = 50 # maximum number of planes to consider for exhaustive search
+MAX_PLANES = 100 # maximum number of planes to consider for exhaustive search
 RAND_FIT_SAMPLES = 6 # maximum number of points to fit plane to
 
 '''
@@ -98,12 +95,14 @@ def random_combination(iterable):
 def get_planes_random(positions):
 	planes = []
 	N_points = len(positions)
+	combs = list(combinations(range(N_points), 3))
 	while len(planes) < MAX_PLANES:
-		ind = random_combination(combinations(range(N_points), 3))
+		# print "try plane combo"
+		ind = combs[random.randrange(len(combs))]
 		if ind in [p['inds'] for p in planes]:
 			# print "plane already found, ", ind
 			continue
-			# discard planes where points are too close
+		# discard planes where points are too close
 		if min_dist(positions.iloc[list(ind)]) > INTER_POINT_THRES:
 			normal = plane_normal(ind, positions)
 			if True not in np.isnan(normal):
@@ -120,11 +119,14 @@ def get_planes_random(positions):
 '''
 get distance from a plane to a point
 '''
-def plane_point_dist(plane, point, all_points):
+def plane_point_dist(point, plane, all_points):
 	# print plane['normal']
 	dist = np.dot(plane['normal'], point-all_points.iloc[plane['inds'][1]])
 	# print dist
 	return abs(dist)
+
+def plane_points_dist(points, plane, all_points):
+	return points.apply(lambda x: plane_point_dist(x, plane, all_points), axis=1)
 
 '''
 check if two planes are equal
@@ -135,12 +137,22 @@ def arePlanesEqual(plane1, plane2, all_points):
 		# print "Normal close."
 		dist_arr = []
 		for i in range(3):
-			dist_arr.append(plane_point_dist(plane1, all_points.iloc[plane2['inds'][i]], all_points))
+			dist_arr.append(plane_point_dist(all_points.iloc[plane2['inds'][i]], plane1, all_points))
 		if min(dist_arr) < 0.005:
 			# print "Dist: ", max(dist_arr)
 			return True
 	return False
 
+'''
+parallel apply on dataframe
+'''
+def parallel_point_plane_dist(points, plane, n_cores=4):
+    df_split = np.array_split(points, n_cores)
+    pool = Pool(n_cores)
+    res_df = pandas.concat(pool.map(partial(plane_points_dist, plane=plane, all_points=points), df_split))
+    pool.close()
+    pool.join()
+    return res_df
 
 '''
 main
@@ -262,14 +274,16 @@ for plane1 in planes:
 		merged_planes.append(plane1)
 print "Merged down to ", len(merged_planes), " planes"
 
-# print planes
+# t0 = time.time()
+
 for plane in merged_planes:
-	plane_vote = 0.0
-	for p_ind, point in filtered_contact_data[pos_inds].iterrows():
-		dist = plane_point_dist(plane, point, filtered_contact_data[pos_inds])
-		# plane_vote += max(0.0, 1.0 - dist/DIST_VOTE_THRES)
-		plane_vote += np.exp(dist*np.log(0.01)/DIST_VOTE_THRES)
-	plane['vote'] = plane_vote
+	distances = plane_points_dist(filtered_contact_data[pos_inds], plane, filtered_contact_data[pos_inds])
+	votes = np.exp(distances*np.log(0.01)/DIST_VOTE_THRES)
+	plane['vote'] = votes.sum()
+
+# t1 = time.time()
+
+# print "Voting took ", "%.3f"%(t1 - t0), " secs" 
 
 RESULT_FILE = 'result.json'
 
