@@ -22,8 +22,9 @@ TORQUE_VAR_LEN = 3
 # MIN_TIME = 0
 MIN_TIME = 5000000 # 5 seconds, to get rid of data while moving arm manually
 
-FORCE_BIAS = np.array([-1.3556, 1.5259, -188.47]) # NOTE: this is configuration dependent, but we use fixed orientation
+# FORCE_BIAS = np.array([-1.3556, 1.5259, -188.47]) # NOTE: this is configuration dependent, but we use fixed orientation
 # TORQUE_BIAS = np.array([-1.3983, 3.51893, 0.5698])
+FORCE_BIAS = np.zeros(3)
 
 # hyperparameters
 FORCE_CONTACT_THRES = 1 #N
@@ -117,7 +118,7 @@ def get_planes_random(positions):
 	return planes
 
 '''
-get distance from a plane to a point
+get absolute distance from a plane to a point
 '''
 def plane_point_dist(point, plane, all_points):
 	# print plane['normal']
@@ -127,6 +128,18 @@ def plane_point_dist(point, plane, all_points):
 
 def plane_points_dist(points, plane, all_points):
 	return points.apply(lambda x: plane_point_dist(x, plane, all_points), axis=1)
+
+'''
+get signed distance from a plane to a point. +ve if same direction as plane normal, else -ve
+'''
+def plane_point_dist_signed(point, plane, all_points):
+	# print plane['normal']
+	dist = np.dot(plane['normal'], point-all_points.iloc[plane['inds'][1]])
+	# print dist
+	return dist
+
+def plane_points_dist_signed(points, plane, all_points):
+	return points.apply(lambda x: plane_point_dist_signed(x, plane, all_points), axis=1)
 
 '''
 check if two planes are equal
@@ -292,6 +305,18 @@ sorted_planes = sorted(merged_planes, key = lambda i: i['vote'], reverse=True)
 
 # pprint.pprint(merged_sorted_planes)
 
+# correct normal polarity for top two planes
+# - correct plane 2 polarity
+plane1pts_plane2_dist = plane_points_dist_signed(filtered_contact_data[pos_inds].iloc[list(sorted_planes[0]['inds'])], sorted_planes[1] ,filtered_contact_data[pos_inds])
+plane1pts_plane2_ind_farthest = abs(plane1pts_plane2_dist).idxmax()
+if plane1pts_plane2_dist.loc[plane1pts_plane2_ind_farthest] < 0:
+	sorted_planes[1]['normal'] *= -1.0
+# - correct plane 1 polarity
+plane2pts_plane1_dist = plane_points_dist_signed(filtered_contact_data[pos_inds].iloc[list(sorted_planes[1]['inds'])], sorted_planes[0] ,filtered_contact_data[pos_inds])
+plane2pts_plane1_ind_farthest = abs(plane2pts_plane1_dist).idxmax()
+if plane2pts_plane1_dist.loc[plane2pts_plane1_ind_farthest] < 0:
+	sorted_planes[0]['normal'] *= -1.0
+
 print "Voting done. Top 2 planes are "
 pprint.pprint(sorted_planes[0])
 pprint.pprint(sorted_planes[1])
@@ -342,8 +367,8 @@ if not opts.skip_plots:
 	ax.plot(joint_points[pos_inds[0]].loc[[min_ind, max_ind]], joint_points[pos_inds[1]].loc[[min_ind, max_ind]], joint_points[pos_inds[2]].loc[[min_ind, max_ind]], 'oc')
 
 result_json = {
-	'joint_start': joint_points[pos_inds.loc[min_ind]].tolist(),
-	'joint_end': joint_points[pos_inds.loc[max_ind]].tolist(),
+	'joint_start': joint_points[pos_inds].loc[min_ind].tolist(),
+	'joint_end': joint_points[pos_inds].loc[max_ind].tolist(),
 	'plane1': sorted_planes[0],
 	'plane2': sorted_planes[1],
 	'all_planes_sorted': sorted_planes
