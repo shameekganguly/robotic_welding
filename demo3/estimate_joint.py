@@ -38,7 +38,7 @@ parse arguments
 def parse_opts():
 	parser = argparse.ArgumentParser(description='Analyze, filter and plot log')
 	parser.add_argument('input_path', help='Path to input log')
-	parser.add_argument('-f', '--fit_type', choices=["exhaust", "random"], default="exhaust", help='Choose plane fit type.')
+	parser.add_argument('-f', '--fit_type', choices=["exhaust", "random"], default="random", help='Choose plane fit type.')
 	parser.add_argument('-o', '--output_path', help='Path to output log', default='')
 	parser.add_argument('-ro', '--rel_output_path', help='Filename or path to write out to. Assumed related to the basedir for the input log file.', default='')
 	parser.add_argument('-nf', '--skip_filter', help='Do not filter the data', default=False, action='store_true')
@@ -248,7 +248,6 @@ if not opts.skip_plots:
 	ax.set_xlabel('X')
 	ax.set_ylabel('Y')
 	ax.set_zlabel('Z')
-	plt.show()
 
 """ fit planes """
 # planes are represented as tuples of 3 indices, where each index corresponds
@@ -297,14 +296,63 @@ print "Voting done. Top 2 planes are "
 pprint.pprint(sorted_planes[0])
 pprint.pprint(sorted_planes[1])
 
+if not opts.skip_plots:
+	fig = plt.figure()
+	ax = fig.add_subplot(111, projection='3d')
+	ax.plot(filtered_contact_data[pos_inds[0]], filtered_contact_data[pos_inds[1]], filtered_contact_data[pos_inds[2]], 'o')
+	p1_points = np.zeros((3,3))
+	for pi in range(3):
+		p1_points[pi,:] = filtered_contact_data[pos_inds].iloc[sorted_planes[0]['inds'][pi]]
+	ax.plot(p1_points[:,0], p1_points[:,1], p1_points[:,2], 'or')
+	p2_points = np.zeros((3,3))
+	for pi in range(3):
+		p2_points[pi,:] = filtered_contact_data[pos_inds].iloc[sorted_planes[1]['inds'][pi]]
+	ax.plot(p2_points[:,0], p2_points[:,1], p2_points[:,2], 'ok')
+	ax.set_xlabel('X')
+	ax.set_ylabel('Y')
+	ax.set_zlabel('Z')
+
 for plane in sorted_planes:
 	plane['normal'] = plane['normal'].tolist()
 
-json_result = json.dumps(sorted_planes)
+'''
+detect joint as intersection of the two planes
+'''
+dist_plane_1 = plane_points_dist(filtered_contact_data[pos_inds], sorted_planes[0], filtered_contact_data[pos_inds])
+dist_plane_2 = plane_points_dist(filtered_contact_data[pos_inds], sorted_planes[1], filtered_contact_data[pos_inds])
+joint_points = filtered_contact_data[(dist_plane_1 < 0.0025) & (dist_plane_2 < 0.0025)]
+
+plane1pts_in_plane2 = filtered_contact_data[pos_inds].iloc[list(sorted_planes[0]['inds'])].copy()
+for pi in range(3):
+	plane1pts_in_plane2.iloc[pi] -= np.dot(plane1pts_in_plane2.iloc[pi] - filtered_contact_data[pos_inds].iloc[sorted_planes[1]['inds'][0]], sorted_planes[1]['normal'])*np.array(sorted_planes[1]['normal'])
+
+centroid = plane1pts_in_plane2.mean(axis = 0)
+
+direction = np.cross(sorted_planes[0]['normal'], sorted_planes[1]['normal'])
+
+locs_on_joint = joint_points[pos_inds].apply(lambda x: np.dot(x - centroid, direction), axis=1)
+
+min_ind = locs_on_joint.idxmin()
+max_ind = locs_on_joint.idxmax()
+
+print "Finished computing joint extents."
+print 
+
+if not opts.skip_plots:
+	ax.plot(joint_points[pos_inds[0]].loc[[min_ind, max_ind]], joint_points[pos_inds[1]].loc[[min_ind, max_ind]], joint_points[pos_inds[2]].loc[[min_ind, max_ind]], 'oc')
+
+result_json = {
+	'joint_start': joint_points[pos_inds.loc[min_ind]].tolist(),
+	'joint_end': joint_points[pos_inds.loc[max_ind]].tolist(),
+	'plane1': sorted_planes[0],
+	'plane2': sorted_planes[1],
+	'all_planes_sorted': sorted_planes
+}
+result_str = json.dumps(result_json)
 with open(RESULT_FILE,'w') as f:
-	f.write(json_result)
+	f.write(result_str)
 
+print "Output in ", RESULT_FILE
 
-print "Done sorting planes. Output in ", RESULT_FILE
-
-
+if not opts.skip_plots:
+	plt.show()
