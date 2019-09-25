@@ -4,6 +4,7 @@
 #include "redis/RedisClient.h"
 #include "timer/LoopTimer.h"
 #include <Eigen/Dense>
+#include "Logger.h"
 
 typedef Eigen::Matrix<double, 6, 1> Vector6d;
 
@@ -136,7 +137,7 @@ int main() {
 	// joint task
 	auto joint_task = new Sai2Primitives::JointTask(robot);
 	joint_task->_use_velocity_saturation_flag = true;
-	joint_task->_saturation_velocity *= 0.25;
+	joint_task->_saturation_velocity *= 0.4;
 	joint_task->_kp = 65.0;
 	joint_task->_kv = 8.0;
 	Eigen::VectorXd joint_task_torques = Eigen::VectorXd::Zero(dof);
@@ -172,6 +173,12 @@ int main() {
 	Eigen::Matrix3d curr_rot; curr_rot.setIdentity();
 	Vector6d force; force.setZero();
 
+	// create a logger. log at 10Hz
+	Logging::Logger logger(100000, "datalog.csv");
+	logger.addVectorToLog(&force, "force");
+	logger.addVectorToLog(&curr_pos, "oppos");
+	logger.start();
+
 	// create a loop timer
 	double control_freq = 1000;
 	LoopTimer timer;
@@ -189,7 +196,7 @@ int main() {
 		// read from Redis
 		robot->_q = redis_client.getEigenMatrixJSON(RKEY_IIWA_JOINT_POS);
 		robot->_dq = redis_client.getEigenMatrixJSON(RKEY_IIWA_JOINT_VEL);
-		// force = redis_client.getEigenMatrixJSON(RKEY_IIWA_FORCE);
+		force = redis_client.getEigenMatrixJSON(RKEY_IIWA_FORCE);
 		// TODO: gravity compensate force sensor data
 		// TODO: transform force to correct frame
 
@@ -221,7 +228,7 @@ int main() {
 				joint_task->computeTorques(joint_task_torques);
 				command_torques = joint_task_torques;
 				if(isReachedHomePos(robot->_q, IIWA_HOME_POS, robot->_dq)) {
-					if (isForceSensorValueGood(force)) {
+					if (true) {// (isForceSensorValueGood(force)) {
 						// update state
 						redis_client.set(RKEY_IIWA_READY, std::to_string(1));
 						state = ControllerState::WaitForHapticDevice;
@@ -275,7 +282,7 @@ int main() {
 				joint_task->computeTorques(joint_task_torques);
 				command_torques = oppoint_task_torques + joint_task_torques;
 				// check for force sensor failure
-				if (!isForceSensorValueGood(force)) {
+				if (false) {//(!isForceSensorValueGood(force)) {
 					state = ControllerState::Failure;
 					joint_task->_desired_position = IIWA_HOME_POS;
 				}
@@ -305,6 +312,9 @@ int main() {
     command_torques.setZero(dof);
     redis_client.setEigenMatrixJSON(RKEY_IIWA_DES_TORQUE, command_torques);
     redis_client.set(RKEY_IIWA_READY, std::to_string(0));
+
+    // stop logging
+    logger.stop();
 
     double end_time = timer.elapsedTime();
     std::cout << "\n";
