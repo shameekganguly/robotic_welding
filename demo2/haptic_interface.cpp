@@ -93,6 +93,7 @@ int main() {
 		hapticDevice->open();
 		hapticDevice->calibrate();
 	}
+	hapticDevice->setForce(cVector3d(0,0,0));
 
 	// haptic controller states:
 	enum HapticState {WaitForRobot, Haptic, Failure};
@@ -125,7 +126,7 @@ int main() {
 	ffilter = ForceFilter<filter_order, 3>(filter_coeffs, 0.001);
 
 	// parameters
-	const double haptic_to_robot_pos_scaling = 1.0;
+	const double haptic_to_robot_pos_scaling = 1.5;
 	const double haptic_to_robot_rot_scaling = 1.0;
 	const double haptic_imped_force_scaling_free_space = 10.0;
 	const double haptic_imped_force_scaling_contact = 50.0;
