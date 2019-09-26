@@ -18,6 +18,7 @@
 #include <json/json.h>
 #include <fstream>
 #include <streambuf>
+#include "demo2/Logger.h"
 
 typedef Eigen::Matrix<double, 6, 1> Vector6d;
 
@@ -40,6 +41,9 @@ const string RKEY_HAPTIC_READY = "sai2::iiwaForceControl::iiwaBot::haptic::devic
 const string RKEY_IIWA_READY = "sai2::iiwaForceControl::iiwaBot::haptic::robot_ready"; // sent to haptic device to indicate robot ready
 const string RKEY_IIWA_CTRL_STATUS = "sai2::iiwaForceControl::iiwaBot::ctrl_status"; // controller state machine status
 const string RKEY_IIWA_CTRL_STATE_INPUT = "sai2::iiwaForceControl::iiwaBot::ctrl_state_des"; // user input to change controller state
+const string RKEY_IIWA_CTRL_FORCE_CALIB = "sai2::iiwaForceControl::iiwaBot::ctrl::calib_force"; // controller output calibrted force
+
+
 // models
 const string robot_fname = "../resources/kuka_iiwa/kuka_iiwa.urdf";
 const string robot_name = "IIWA";
@@ -48,7 +52,7 @@ const string sensor_calib_file = "sensor_calib.json";
 const string joint_estimation_file = "result.json";
 
 // global constants
-const Eigen::Vector3d GRAVITY_BASE (0.0, 0.0, -9.8);
+const Eigen::Vector3d GRAVITY_BASE (0.0, 0.0, -9.81);
 
 #include <signal.h>
 bool runloop = true;
@@ -79,6 +83,7 @@ void getSensorBias(
 	const Eigen::Matrix3d& ee_ori, // wrt base frame
 	Vector6d& sensor_bias // in sensor frame
 ) {
+//	cout << ee_ori << endl;
 	// orientation offset from sensor to ee
 	Eigen::Matrix3d ori_sensor_ee;
 	ori_sensor_ee << cos(FORCE_SENSOR_ROT), -sin(FORCE_SENSOR_ROT), 0.0,
@@ -90,6 +95,7 @@ void getSensorBias(
 	// subtract tool weight and moment from raw_force
 	sensor_bias << raw_force.segment<3>(0) - ori_sensor_base.transpose()*TOOL_MASS*GRAVITY_BASE,
 				raw_force.segment<3>(3) - sensor_tool_gravity_moment;
+	cout << sensor_bias.transpose() << endl;
 }
 
 // get calibrated force from raw force.
@@ -98,8 +104,7 @@ void getCalibratedForce(
 	const Vector6d& raw_force, // in sensor frame
 	const Vector6d& sensor_bias, // in sensor frame
 	const Eigen::Matrix3d& ee_ori, // wrt base frame
-	Eigen::Vector3d& calib_force, // return: calib force in base frame
-	Eigen::Vector3d& calib_moment // return: calib moment in base frame
+	Vector6d& calib_force // return: calib force in base frame
 ) {
 	// orientation offset from sensor to ee
 	Eigen::Matrix3d ori_sensor_ee;
@@ -115,24 +120,24 @@ void getCalibratedForce(
 	// calibrated force
 	Vector6d unbiased_force = raw_force - sensor_bias; //TODO: use FORCE_SENSOR_SIGN?
 	Eigen::Vector3d tool_local_com (TOOL_COM);
-	calib_force = ori_sensor_base*(unbiased_force.segment<3>(0)) - TOOL_MASS*GRAVITY_BASE;
+	calib_force.segment<3>(0) = ori_sensor_base*(unbiased_force.segment<3>(0)) - TOOL_MASS*GRAVITY_BASE;
 	
 	// calibrated moment
 	Eigen::Vector3d sensor_tool_gravity_moment = tool_local_com.cross(ori_sensor_base.transpose()*GRAVITY_BASE);
-	calib_moment = ori_sensor_base*(unbiased_force.segment<3>(3) - TOOL_MASS*sensor_tool_gravity_moment);
+	calib_force.segment<3>(3) = ori_sensor_base*(unbiased_force.segment<3>(3) - TOOL_MASS*sensor_tool_gravity_moment);
 }
 
 // sanity check force sensor data. assumes data is gravity compensated and bias is removed.
-bool isForceSensorValueGood(const Eigen::Vector3d& force, const Eigen::Vector3d& moment) {
-	const double force_threshold = 10; //N of force magnitude
+bool isForceSensorValueGood(Vector6d& force) {
+	const double force_threshold = 25; //N of force magnitude
 	const double moment_threshold = 4;//Nm, assumes applied at the torch tip
 	// first 3 in array is force, next 3 is moment
 	bool ret_flag = true;
-	if (force.norm() > force_threshold) {
+	if (force.segment<3>(0).norm() > force_threshold) {
 		cerr << "ERROR: Force sensor - force magnitude exceeded threshold: " << force_threshold << endl;
 		ret_flag = false;
 	}
-	if (moment.norm() > moment_threshold) {
+	if (force.segment<3>(3).norm() > moment_threshold) {
 		cerr << "ERROR: Force sensor - moment magnitude exceeded threshold: " << moment_threshold << endl;
 		ret_flag = false;
 	}
@@ -230,7 +235,8 @@ int main() {
 	// joint task
 	auto joint_task = new Sai2Primitives::JointTask(robot);
 	joint_task->_use_velocity_saturation_flag = true;
-	joint_task->_saturation_velocity *= 0.25;
+	joint_task->_saturation_velocity.head<3>() *= 0.25;
+	joint_task->_saturation_velocity.tail<4>() *= 0.7;
 	joint_task->_kp = 65.0;
 	joint_task->_kv = 8.0;
 	Eigen::VectorXd joint_task_torques = Eigen::VectorXd::Zero(dof);
@@ -275,13 +281,17 @@ int main() {
 	Eigen::Vector3d curr_vel; curr_vel.setZero();
 	Vector6d force; force.setZero();
 	Vector6d force_sensor_bias; force_sensor_bias.setZero();
-	Eigen::Vector3d calib_force; calib_force.setZero();
-	Eigen::Vector3d calib_moment; calib_moment.setZero();
 	Eigen::Vector3d joint_start, joint_stop; // extreme points of the weld joint
 	Eigen::Vector3d plane1_normal, plane2_normal; // normals are corrected so that they indicate the free space
 	Eigen::Vector3d pre_weld_point, weld_start, weld_stop, post_weld_point; // computed from weld points and planes
 	uint state_counter = 0;
 	bool fReachedPos = false;
+	Vector6d calib_force; calib_force.setZero();
+
+	// create a logger
+	Logging::Logger logger(100000, "datalog.csv");
+	logger.addVectorToLog(&calib_force, "force");
+	logger.addVectorToLog(&curr_pos, "oppos");
 
 	// create a loop timer
 	double control_freq = 1000;
@@ -302,10 +312,10 @@ int main() {
 		robot->_dq = redis_client.getEigenMatrixJSON(RKEY_IIWA_JOINT_VEL);
 		force = redis_client.getEigenMatrixJSON(RKEY_IIWA_FORCE);
 		robot->rotation(curr_rot, oppoint_link_name);
-		getCalibratedForce(force, force_sensor_bias, curr_rot, calib_force, calib_moment);
+		getCalibratedForce(force, force_sensor_bias, curr_rot, calib_force);
 
 		// update the model 20 times slower or when task hierarchy changes
-		if(controller_counter%20 == 0 || f_update_task_models) {
+		if(controller_counter%2 == 0 || f_update_task_models) {
 			robot->updateModel();
 			// update A matrix to stiffen last joints
 			robot->_M(6,6) += 0.08;
@@ -319,6 +329,7 @@ int main() {
 		if(controller_counter%200 == 0) {
 			// write status to redis
 			redis_client.set(RKEY_IIWA_CTRL_STATUS, to_string(state));
+			redis_client.setEigenMatrixJSON(RKEY_IIWA_CTRL_FORCE_CALIB, calib_force);
 		}
 
 		////////////////////////////// Compute joint torques in state machine
@@ -333,7 +344,7 @@ int main() {
 				joint_task->computeTorques(joint_task_torques);
 				command_torques = joint_task_torques;
 				if(isReachedHomePos(robot->_q, joint_task->_desired_position, robot->_dq)) {
-					if (isForceSensorValueGood(calib_force, calib_moment)) {
+					if (isForceSensorValueGood(calib_force)) {
 						// update state
 						redis_client.set(RKEY_IIWA_READY, std::to_string(1));
 						state = ControllerState::WaitForHapticDevice;
@@ -356,9 +367,12 @@ int main() {
 				if(controller_counter%200 == 0) {
 					try {
 						haptic_device_ready = std::stoi(redis_client.get(RKEY_HAPTIC_READY));
-						des_control_state = static_cast<ControllerState>(std::stoi(redis_client.get(RKEY_IIWA_CTRL_STATE_INPUT)));
 					} catch (...) {
 						haptic_device_ready = false;
+					}
+					try {
+						des_control_state = static_cast<ControllerState>(std::stoi(redis_client.get(RKEY_IIWA_CTRL_STATE_INPUT)));
+					} catch (...) {
 						des_control_state = state;
 					}
 					if (des_control_state == ControllerState::Float) {
@@ -368,6 +382,8 @@ int main() {
 					if (haptic_device_ready) {
 						state = ControllerState::Haptic;
 						f_update_task_models = true;
+						// start logging
+						logger.start();
 					}
 				}
 				break;
@@ -393,7 +409,7 @@ int main() {
 				joint_task->computeTorques(joint_task_torques);
 				command_torques = oppoint_task_torques + joint_task_torques;
 				// check for force sensor failure
-				if (!isForceSensorValueGood(calib_force, calib_moment)) {
+				if (!isForceSensorValueGood(calib_force)) {
 					state = ControllerState::Failure;
 					joint_task->_desired_position = IIWA_HOME_POS;
 				}
@@ -613,6 +629,9 @@ int main() {
     command_torques.setZero(dof);
     redis_client.setEigenMatrixJSON(RKEY_IIWA_DES_TORQUE, command_torques);
     redis_client.set(RKEY_IIWA_READY, std::to_string(0));
+
+    //stop logging
+    logger.stop();
 
     double end_time = timer.elapsedTime();
     std::cout << "\n";

@@ -4,7 +4,7 @@ project (WELDING_SIM)
 SET(CMAKE_CXX_FLAGS "-std=c++11 -I/usr/include -I/usr/local/include")
 
 # set source
-include_directories(${PROJECT_SOURCE_DIR}/src/)
+include_directories(${PROJECT_SOURCE_DIR}/)
 
 # # set common dependencies
 # # - eigen3 # must be loaded before chai to avoid a conflict between the system Eigen and the Chai eigen.

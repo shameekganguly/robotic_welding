@@ -15,15 +15,27 @@ double IIWA_HOME_JPOS [7] = {
 };
 
 // base configuration away from workpiece before calibrating force sensor
+/*
+double IIWA_FORCE_CALIB_JPOS [7] = {
+	6.5/180.0*M_PI,
+	-33/180.0*M_PI,
+	-7.3/180.0*M_PI,
+	52/180.0*M_PI,
+	1.56/180.0*M_PI,
+	-91/180.0*M_PI,
+	-4.75/180.0*M_PI
+};*/
+
 double IIWA_FORCE_CALIB_JPOS [7] = {
 	4/180.0*M_PI,
-	-25/180.0*M_PI,
-	-2/180.0*M_PI,
-	77/180.0*M_PI,
-	6.3/180.0*M_PI,
-	-55/180.0*M_PI,
-	-84/180.0*M_PI
+        -25/180.0*M_PI,
+        -2/180.0*M_PI,
+        77/180.0*M_PI,
+        6.3/180.0*M_PI,
+        -55/180.0*M_PI,
+        -84/180.0*M_PI
 };
+
 
 // range of motion of joint 7 (-ve lim, neutral, +ve lim)
 // const double IIWA_FORCE_CALIB_JOINT7_RANGE [3] = {-}
@@ -38,7 +50,7 @@ const int FORCE_SENSOR_SIGN = -1; // for old optoforce sensor, sign is -ve
 const double FORCE_SENSOR_ROT = 0.0/180.0*M_PI; // radians
 
 // tool mass
-const double TOOL_MASS = 2.2; // kg
+const double TOOL_MASS = 2.0; // kg
 
 // tool COM in force sensor frame
 // Note that the force sensor frame is at the open face away from the robot
