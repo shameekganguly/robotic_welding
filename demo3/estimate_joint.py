@@ -19,8 +19,8 @@ FORCE_VAR_NAME = "force" # 6D force-torque vector
 FORCE_VAR_LEN = 3
 TORQUE_VAR_LEN = 3
 
-# MIN_TIME = 0
-MIN_TIME = 5000000 # 5 seconds, to get rid of data while moving arm manually
+MIN_TIME = 0
+# MIN_TIME = 5000000 # 5 seconds, to get rid of data while moving arm manually
 
 # FORCE_BIAS = np.array([-1.3556, 1.5259, -188.47]) # NOTE: this is configuration dependent, but we use fixed orientation
 # TORQUE_BIAS = np.array([-1.3983, 3.51893, 0.5698])
@@ -343,9 +343,9 @@ for plane in sorted_planes:
 '''
 detect joint as intersection of the two planes
 '''
-dist_plane_1 = plane_points_dist(filtered_contact_data[pos_inds], sorted_planes[0], filtered_contact_data[pos_inds])
-dist_plane_2 = plane_points_dist(filtered_contact_data[pos_inds], sorted_planes[1], filtered_contact_data[pos_inds])
-joint_points = filtered_contact_data[(dist_plane_1 < 0.0025) & (dist_plane_2 < 0.0025)]
+dist_plane_1 = plane_points_dist(contact_data[pos_inds], sorted_planes[0], filtered_contact_data[pos_inds])
+dist_plane_2 = plane_points_dist(contact_data[pos_inds], sorted_planes[1], filtered_contact_data[pos_inds])
+joint_points = contact_data[(dist_plane_1 < 0.0015) & (dist_plane_2 < 0.0015)]
 
 plane1pts_in_plane2 = filtered_contact_data[pos_inds].iloc[list(sorted_planes[0]['inds'])].copy()
 for pi in range(3):
@@ -361,10 +361,16 @@ min_ind = locs_on_joint.idxmin()
 max_ind = locs_on_joint.idxmax()
 
 print "Finished computing joint extents."
-print 
+print joint_points[pos_inds].loc[[min_ind, max_ind]]
 
 if not opts.skip_plots:
 	ax.plot(joint_points[pos_inds[0]].loc[[min_ind, max_ind]], joint_points[pos_inds[1]].loc[[min_ind, max_ind]], joint_points[pos_inds[2]].loc[[min_ind, max_ind]], 'oc')
+
+dist_from_joint = joint_points[pos_inds].apply(lambda x: np.linalg.norm(x - centroid - direction*np.dot(x - centroid, direction)), axis=1)
+
+if not opts.skip_plots:
+	fig = plt.figure()
+	plt.hist(dist_from_joint)
 
 result_json = {
 	'joint_start': joint_points[pos_inds].loc[min_ind].tolist(),
