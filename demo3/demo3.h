@@ -44,4 +44,10 @@ const double TOOL_MASS = 2.2; // kg
 // Note that the force sensor frame is at the open face away from the robot
 const double TOOL_COM [3] = {0.0904, -0.001, 0.1474};
 
+// backoff distance from part
+const double PART_BACKOFF_DIST = 0.05; // m
+
+// offset from joint at which to weld
+const double WELD_OFFSET = 0.005; // m
+
 #endif

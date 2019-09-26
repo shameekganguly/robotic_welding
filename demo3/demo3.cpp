@@ -15,6 +15,9 @@
 #include "timer/LoopTimer.h"
 #include <Eigen/Dense>
 #include "demo3.h"
+#include <json/json.h>
+#include <fstream>
+#include <streambuf>
 
 typedef Eigen::Matrix<double, 6, 1> Vector6d;
 
@@ -40,6 +43,9 @@ const string RKEY_IIWA_CTRL_STATE_INPUT = "sai2::iiwaForceControl::iiwaBot::ctrl
 // models
 const string robot_fname = "../resources/kuka_iiwa/kuka_iiwa.urdf";
 const string robot_name = "IIWA";
+// calibration files
+const string sensor_calib_file = "sensor_calib.json";
+const string joint_estimation_file = "result.json";
 
 // global constants
 const Eigen::Vector3d GRAVITY_BASE (0.0, 0.0, -9.8);
@@ -48,6 +54,24 @@ const Eigen::Vector3d GRAVITY_BASE (0.0, 0.0, -9.8);
 bool runloop = true;
 unsigned long long controller_counter = 0;
 void sighandler(int sig) { runloop = false;}
+
+// load json weld joint data
+void loadJson(
+	const string& fname,
+	Eigen::Vector3d& joint_start,
+	Eigen::Vector3d& joint_end,
+	Eigen::Vector3d& normal1,
+	Eigen::Vector3d& normal2
+) {
+	Json::Value root;
+	std::ifstream t(fname);
+	Json::Reader reader;
+	reader.parse(t, root);
+	RedisClient::hEigenFromStringArrayJSON(joint_start, root["joint_start"].asString());
+	RedisClient::hEigenFromStringArrayJSON(joint_end, root["joint_end"].asString());
+	RedisClient::hEigenFromStringArrayJSON(normal1, root["plane1"]["normal"].asString());
+	RedisClient::hEigenFromStringArrayJSON(normal2, root["plane2"]["normal"].asString());
+}
 
 // force sensor calibration. NOTE: should only be called when sensor is static
 void getSensorBias(
@@ -125,6 +149,21 @@ bool isReachedHomePos(const Eigen::VectorXd& jpos_curr, const Eigen::VectorXd& j
 	const double iiwa_vel_thresh = 0.003; // rad/s
 	Eigen::VectorXd pos_diff_abs = (jpos_curr - jpos_des).array().abs();
 	if ((iiwa_pos_thresh - pos_diff_abs).minCoeff() > 0) { // position threshold achieved
+		if (jvel.norm() < iiwa_vel_thresh) {
+			return true;
+		}
+	}
+	return false;
+}
+
+// check if IIWA Cartesian motion is complete
+bool isReachedDesPos(const Eigen::Vector3d& oppos_curr, const Eigen::Vector3d& oppos_des, const Eigen::VectorXd& jvel) {
+	// IIWA joint position thresholds 
+	const double pos_threshold = WELD_OFFSET; //TODO: tune this. should be lower
+	// IIWA joint velocity magnitude threshold
+	const double iiwa_vel_thresh = 0.003; // rad/s
+	Eigen::Vector3d pos_diff = oppos_curr - oppos_des;
+	if (pos_diff.norm() < pos_threshold) { // position threshold achieved
 		if (jvel.norm() < iiwa_vel_thresh) {
 			return true;
 		}
@@ -213,13 +252,15 @@ int main() {
 	oppoint_task->_kv_ori = 11.0;
 
 	// controller states:
-	enum ControllerState {Init=0, WaitForHapticDevice, Haptic, Failure, Float, CalibrateForceSensor};
+	enum ControllerState {Init=0, WaitForHapticDevice, Haptic, Failure, Float, CalibrateForceSensor, WeldTrajectory};
 	// NOTE: force sensor calibration itself can be a state machine. for now, we only have one state
 	// NOTE: we use a scoped enum for ForceSensorCalibrationState to avoid name collision wit the ControllerState
 	enum class ForceSensorCalibrationState {Init=0, Finished};
 	auto state = ControllerState::Init;
 	ControllerState des_control_state;
 	auto force_calib_state = ForceSensorCalibrationState::Init;
+	enum class WeldTrajectoryState {Init=0, PrePoint, StartPoint, Weld, PostPoint, Finished};
+	auto weld_traj_state = WeldTrajectoryState::Init;
 
 	// flags
 	bool haptic_device_ready = false;
@@ -230,10 +271,17 @@ int main() {
 	Eigen::Matrix3d des_rot; des_rot.setIdentity();
 	Eigen::Vector3d curr_pos; curr_pos.setZero();
 	Eigen::Matrix3d curr_rot; curr_rot.setIdentity();
+	Eigen::MatrixXd Jv;
+	Eigen::Vector3d curr_vel; curr_vel.setZero();
 	Vector6d force; force.setZero();
 	Vector6d force_sensor_bias; force_sensor_bias.setZero();
 	Eigen::Vector3d calib_force; calib_force.setZero();
 	Eigen::Vector3d calib_moment; calib_moment.setZero();
+	Eigen::Vector3d joint_start, joint_stop; // extreme points of the weld joint
+	Eigen::Vector3d plane1_normal, plane2_normal; // normals are corrected so that they indicate the free space
+	Eigen::Vector3d pre_weld_point, weld_start, weld_stop, post_weld_point; // computed from weld points and planes
+	uint state_counter = 0;
+	bool fReachedPos = false;
 
 	// create a loop timer
 	double control_freq = 1000;
@@ -358,6 +406,10 @@ int main() {
 					if (des_control_state == ControllerState::Float) {
 						cout << "Switch to float" << endl;
 						state = ControllerState::Float;
+					} else if (des_control_state == ControllerState::WeldTrajectory) {
+						cout << "Switch to weld" << endl;
+						weld_traj_state = WeldTrajectoryState::Init;
+						state = ControllerState::WeldTrajectory;
 					}
 				}
 				break;
@@ -445,6 +497,109 @@ int main() {
 				}
 				joint_task->computeTorques(joint_task_torques);
 				command_torques = joint_task_torques;
+				break;
+			case ControllerState::WeldTrajectory:
+				robot->position(curr_pos, oppoint_link_name, oppoint_pos_in_link);
+				// robot->Jv(Jv, oppoint_link_name, oppoint_pos_in_link);
+				// curr_vel = Jv * robot->_dq;
+				switch (weld_traj_state) {
+					case WeldTrajectoryState::Init:
+						// load data from json file
+						loadJson(joint_estimation_file, joint_start, joint_stop, plane1_normal, plane2_normal);
+						// NOTE: we do not sanity check the data
+						// compute weld start and stop points
+						weld_start = joint_start + WELD_OFFSET * (plane1_normal + plane2_normal);
+						weld_stop = joint_stop + WELD_OFFSET * (plane1_normal + plane2_normal);
+						// compute preweld point
+						pre_weld_point = joint_start + PART_BACKOFF_DIST * (plane1_normal + plane2_normal);
+						// TODO change above to be closer to the current ee position
+						post_weld_point = joint_stop + PART_BACKOFF_DIST * (plane1_normal + plane2_normal);
+						// TODO: compute optimal orientation
+						// set oppos desired position to pre_point
+						oppoint_task->_desired_position = pre_weld_point;
+						joint_task->_desired_position = IIWA_HOME_POS;
+						// set oppos task saturation velocity
+						// switch state to PrePoint
+						weld_traj_state = WeldTrajectoryState::PrePoint;
+						state_counter = 0;
+						fReachedPos = false;
+						break;
+					case WeldTrajectoryState::PrePoint:
+						// check if reached PrePoint
+						if (!fReachedPos && isReachedDesPos(curr_pos, oppoint_task->_desired_position, robot->_dq)) {
+							state_counter = 0;
+							fReachedPos = true;
+						}
+						// waste a few cycles to pause motion
+						state_counter++;
+						if (fReachedPos && state_counter > 500 && isReachedDesPos(curr_pos, oppoint_task->_desired_position, robot->_dq)) {
+							state_counter = 0;
+							// set oppos desired point to weld start
+							oppoint_task->_desired_position = weld_start;
+							fReachedPos = false;
+							// TODO: use OTG, higher gains
+							// switch state to StartPoint
+							weld_traj_state = WeldTrajectoryState::StartPoint;
+						}
+						break;
+					case WeldTrajectoryState::StartPoint:
+						// check if reached weld start
+						if (!fReachedPos && isReachedDesPos(curr_pos, oppoint_task->_desired_position, robot->_dq)) {
+							state_counter = 0;
+							fReachedPos = true;
+						}
+						// waste a few cycles to pause motion
+						state_counter++;
+						if (fReachedPos && state_counter > 500 && isReachedDesPos(curr_pos, oppoint_task->_desired_position, robot->_dq)) {
+							state_counter = 0;
+							// set oppos desired point to weld stop
+							oppoint_task->_desired_position = weld_stop;
+							// TODO: // lower oppos task saturation velocity
+							fReachedPos = false;
+							// TODO: use OTG, higher gains
+							// switch state to Weld
+							weld_traj_state = WeldTrajectoryState::Weld;
+						}
+						break;
+					case WeldTrajectoryState::Weld:
+						// check if reached weld stop
+						if (!fReachedPos && isReachedDesPos(curr_pos, oppoint_task->_desired_position, robot->_dq)) {
+							state_counter = 0;
+							fReachedPos = true;
+						}
+						// waste a few cycles to pause motion
+						state_counter++;
+						if (fReachedPos && state_counter > 500 && isReachedDesPos(curr_pos, oppoint_task->_desired_position, robot->_dq)) {
+							state_counter = 0;
+							// set oppos desired point to post point
+							oppoint_task->_desired_position = post_weld_point;
+							// TODO: // up oppos task saturation velocity again
+							fReachedPos = false;
+							// TODO: use OTG, higher gains
+							// switch state to Weld
+							weld_traj_state = WeldTrajectoryState::PostPoint;
+						}
+						break;
+					case WeldTrajectoryState::PostPoint:
+						// check if reached weld stop
+						if (isReachedDesPos(curr_pos, oppoint_task->_desired_position, robot->_dq)) {
+							weld_traj_state = WeldTrajectoryState::Finished;
+							cout << "Finished weld trajectory" << endl;
+						}
+						break;
+					case WeldTrajectoryState::Finished:
+						// nothing to do. handle user input to float or init again.
+						break;
+				}
+				if (f_update_task_models) { // set to true when robot kinematic model is updated
+					oppoint_task->updateTaskModel(Eigen::MatrixXd::Identity(dof, dof));
+					joint_task->updateTaskModel(oppoint_task->_N);
+					f_update_task_models = false;
+				}
+				// comput joint torques
+				oppoint_task->computeTorques(oppoint_task_torques);
+				joint_task->computeTorques(joint_task_torques);
+				command_torques = oppoint_task_torques + joint_task_torques;
 				break;
 		}
 
