@@ -34,6 +34,13 @@ public:
 		_data_filtered.fill(0.0);
 	}
 
+	// clear
+	void clear() {
+		_count_samples = 0;
+		_data_buffer_fir.fill(0.0);
+		_data_filtered.fill(0.0);	
+	}
+
 	// add sample
 	void addSample(const SampleFd& sample) {
 		if (_count_samples < filter_order) {

@@ -96,23 +96,25 @@ int main() {
 	hapticDevice->setForce(cVector3d(0,0,0));
 
 	// haptic controller states:
-	enum HapticState {WaitForRobot, Haptic, Failure};
+	enum HapticState {WaitForRobot, HapticTranslation, HapticRotation, Failure};
 	auto state = HapticState::WaitForRobot;
 
 	// flags
 	bool robot_ready = false;
 	bool first_haptic_iteration = false;
 	bool is_in_contact = false;
+	bool is_haptic_switch_pressed = false;
 
 	// cache
 	Eigen::Vector3d des_pos, curr_robot_pos; des_pos.setZero(); curr_robot_pos.setZero();
 	Eigen::Matrix3d des_rot, curr_robot_rot; des_rot.setIdentity(); curr_robot_rot.setIdentity();
+	Eigen::Quaterniond des_rot_quat, curr_robot_rot_quat; des_rot_quat.setIdentity(); curr_robot_rot_quat.setIdentity();
 	Eigen::Vector3d robot_wspace_pos; robot_wspace_pos.setZero();
-	Eigen::Matrix3d robot_wspace_rot; robot_wspace_rot.setIdentity();
+	Eigen::Quaterniond robot_wspace_rot_quat; robot_wspace_rot_quat.setIdentity();
 	chai3d::cVector3d raw_pos;
 	chai3d::cMatrix3d raw_rot;
 	Eigen::Vector3d haptic_pos; haptic_pos.setZero();
-	Eigen::Matrix3d haptic_rot; haptic_rot.setIdentity();
+	Eigen::Quaterniond haptic_rot_quat; haptic_rot_quat.setIdentity();
 	Vector6d raw_force;
 	Eigen::Vector3d force; force.setZero();
 	Eigen::Vector3d haptic_force;
@@ -153,6 +155,7 @@ int main() {
 		robot->_dq = RedisClient::decodeEigenMatrixJSON(ret_str[1]);
 		robot->position(curr_robot_pos, oppoint_link_name, oppoint_pos_in_link);
 		robot->rotation(curr_robot_rot, oppoint_link_name);
+		curr_robot_rot_quat = Eigen::Quaterniond(curr_robot_rot);
 		raw_force = RedisClient::decodeEigenMatrixJSON(ret_str[2]);
 		calibrated_force(raw_force, curr_robot_rot, &force);
 		double contact_thresh = 3.5; //N
@@ -178,7 +181,10 @@ int main() {
 		// read haptic device position
 		hapticDevice->getPosition(raw_pos);
 		haptic_pos = raw_pos.eigen();
-		// TODO: orientation
+		// read haptic device orientation
+		hapticDevice->getRotation(raw_rot);
+		haptic_rot_quat = Eigen::Quaterniond(raw_rot.eigen());
+
 
 		////////////////////////////// Compute feedback force for haptic device, set position for robot
 		switch (state) {
@@ -193,7 +199,7 @@ int main() {
 						robot_ready = false;
 					}
 					if (robot_ready) {
-						state = HapticState::Haptic;
+						state = HapticState::HapticTranslation;
 						first_haptic_iteration = true;
 						// compute robot current position
 						robot->updateModel();
@@ -209,7 +215,7 @@ int main() {
 					}
 				}
 				break;
-			case HapticState::Haptic:
+			case HapticState::HapticTranslation:
 				// update desired position, orientation
 				des_pos = haptic_pos*haptic_to_robot_pos_scaling;
 				des_pos = robot_wspace_pos + haptic_to_robot_rotation_frame*des_pos;
@@ -240,6 +246,54 @@ int main() {
 					robot_ready = std::stoi(redis_client.get(RKEY_IIWA_READY));
 					if (!robot_ready) {
 						state = HapticState::WaitForRobot;
+					}
+				}
+				// check for switch to orientation control with haptic device
+				if(controller_counter%100 == 0) {
+					hapticDevice->getUserSwitch(0, is_haptic_switch_pressed);
+					if(is_haptic_switch_pressed) {
+						// set orientation workspace center
+						robot_wspace_rot_quat = haptic_rot_quat.conjugate()*curr_robot_rot_quat;
+						// set haptic force to zero. TODO: allow moments due to contact
+						// during orientation control?
+						hapticDevice->setForce(cVector3d(0,0,0));
+						// switch state
+						state = HapticState::HapticRotation;
+					}
+				}
+				break;
+			case HapticState::HapticRotation:
+				// update desired orientation
+				des_rot_quat = haptic_rot_quat; //TODO: incorporate haptic_to_robot_rot_scaling
+				des_rot_quat = des_rot_quat*robot_wspace_rot_quat; //TODO: incorporate haptic_to_robot_rotation_frame
+				redis_client.pipeset({
+					{RKEY_IIWA_DES_POS, RedisClient::encodeEigenMatrixJSON(des_pos)},
+					{RKEY_IIWA_DES_ORI, RedisClient::encodeEigenMatrixJSON(des_rot_quat.toRotationMatrix())}
+				});
+				// intermittently check if controller is still running
+				if(controller_counter%200 == 0) {
+					robot_ready = std::stoi(redis_client.get(RKEY_IIWA_READY));
+					if (!robot_ready) {
+						state = HapticState::WaitForRobot;
+					}
+				}
+				// check for switch to orientation control with haptic device
+				if(controller_counter%100 == 0) {
+					hapticDevice->getUserSwitch(0, is_haptic_switch_pressed);
+					if(!is_haptic_switch_pressed) {
+						state = HapticState::HapticTranslation;
+						// compute robot current position
+						robot->updateModel();
+						robot->position(curr_robot_pos, oppoint_link_name, oppoint_pos_in_link);
+						robot->rotation(curr_robot_rot, oppoint_link_name);
+						des_pos = curr_robot_pos;
+						des_rot = curr_robot_rot;
+						// compute robot workspace center. TODO: use haptic primitive
+						robot_wspace_pos = -haptic_pos*haptic_to_robot_pos_scaling;
+						robot_wspace_pos = haptic_to_robot_rotation_frame*robot_wspace_pos + curr_robot_pos;
+						cout << "robot_wspace_pos " << robot_wspace_pos << endl;
+						// clear force filter
+						ffilter.clear();
 					}
 				}
 				break;
