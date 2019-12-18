@@ -362,6 +362,8 @@ max_ind = locs_on_joint.idxmax()
 
 print "Finished computing joint extents."
 print joint_points[pos_inds].loc[[min_ind, max_ind]]
+print "Computed weld trajectory extents."
+print  joint_points[pos_inds].loc[[min_ind, max_ind]] + 0.005*(np.array(sorted_planes[0]['normal']) + np.array(sorted_planes[1]['normal']))
 
 if not opts.skip_plots:
 	ax.plot(joint_points[pos_inds[0]].loc[[min_ind, max_ind]], joint_points[pos_inds[1]].loc[[min_ind, max_ind]], joint_points[pos_inds[2]].loc[[min_ind, max_ind]], 'oc')
