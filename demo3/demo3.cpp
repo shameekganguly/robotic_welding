@@ -189,7 +189,7 @@ bool isPosOriChangeSafe(
 	const Eigen::Matrix3d& curr_ori
 ) {
 	const double pos_change_thresh = 0.1; // 10 cm
-	const double ori_change_thresh = 10.0 * M_PI/180.0; // 10 degrees
+	const double ori_change_thresh = 20.0 * M_PI/180.0; // 10 degrees
 	bool ret_flag = true;
 	if ((curr_pos - des_pos).norm() > pos_change_thresh) {
 		cerr << "Haptic device position update exceeded threshold: " << pos_change_thresh << endl;
@@ -200,7 +200,8 @@ bool isPosOriChangeSafe(
 	Eigen::AngleAxisd ori_change (curr_ori.transpose()*des_ori);
 	//TODO: verify behavior with identity matrix
 	if (ori_change.angle() > ori_change_thresh) {
-		cerr << "Haptic device orientation update exceeded threshold: " << ori_change_thresh << endl;
+		cerr << "Haptic device orientation update exceeded threshold: " << ori_change_thresh << 
+		" commanded: " << ori_change.angle() << endl;
 		ret_flag = false;
 	}
 	return ret_flag;
@@ -375,6 +376,7 @@ int main() {
 					try {
 						haptic_device_ready = std::stoi(redis_client.get(RKEY_HAPTIC_READY));
 					} catch (...) {
+						cout << "Haptic ready fetch error" << endl;
 						haptic_device_ready = false;
 					}
 					try {
@@ -387,13 +389,16 @@ int main() {
 						state = ControllerState::Float;
 					}
 					if (haptic_device_ready) {
+						cout << "Switch to haptic" << endl;
 						state = ControllerState::Haptic;
 						// turn off OTG for haptic mode
 						oppoint_task->_use_interpolation_flag = false;
 						oppoint_task->reInitializeTask();
 						f_update_task_models = true;
 						// start logging
-						logger.start();
+						if(!logger._f_is_logging){
+							logger.start();
+						}
 					}
 				}
 				break;

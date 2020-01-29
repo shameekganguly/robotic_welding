@@ -31,6 +31,9 @@ const string world_fname = "resources/world.urdf";
 const string robot_fname = "../resources/kuka_iiwa/kuka_iiwa.urdf";
 const string robot_name = "IIWA";
 
+// haptic device specific:
+const bool use_gripper_switch = true; 
+
 #include <signal.h>
 bool runloop = true;
 unsigned long long controller_counter = 0;
@@ -86,12 +89,16 @@ int main() {
 
 	// get a handle to the first haptic device
     cGenericHapticDevicePtr hapticDevice;
+    double haptic_gripper_switch_thresh; 
 	if (!handler->getDevice(hapticDevice, 0)) {
 		cout << "No haptic device found. " << endl;
 		exit(1);
 	} else {
 		hapticDevice->open();
 		hapticDevice->calibrate();
+		if(use_gripper_switch) {
+			haptic_gripper_switch_thresh = hapticDevice->getSpecifications().m_gripperMaxAngleRad/10.0;
+		}
 	}
 	hapticDevice->setForce(cVector3d(0,0,0));
 
@@ -115,6 +122,9 @@ int main() {
 	chai3d::cMatrix3d raw_rot;
 	Eigen::Vector3d haptic_pos; haptic_pos.setZero();
 	Eigen::Quaterniond haptic_rot_quat; haptic_rot_quat.setIdentity();
+	Eigen::Quaterniond haptic_rot_initial;
+	hapticDevice->getRotation(raw_rot);
+	haptic_rot_initial = Eigen::Quaterniond(raw_rot.eigen());
 	Vector6d raw_force;
 	Eigen::Vector3d force; force.setZero();
 	Eigen::Vector3d haptic_force;
@@ -183,7 +193,12 @@ int main() {
 		haptic_pos = raw_pos.eigen();
 		// read haptic device orientation
 		hapticDevice->getRotation(raw_rot);
+		// haptic_rot_quat = haptic_rot_initial*Eigen::Quaterniond(raw_rot.eigen())*haptic_rot_initial.conjugate();
 		haptic_rot_quat = Eigen::Quaterniond(raw_rot.eigen());
+
+		// if(controller_counter%100 == 0) {
+		// 	cout << "Rot: " << haptic_rot_quat.coeffs().transpose() << endl;
+		// }
 
 
 		////////////////////////////// Compute feedback force for haptic device, set position for robot
@@ -250,7 +265,13 @@ int main() {
 				}
 				// check for switch to orientation control with haptic device
 				if(controller_counter%100 == 0) {
-					hapticDevice->getUserSwitch(0, is_haptic_switch_pressed);
+					if (use_gripper_switch) {
+						double angle;
+						hapticDevice-> getGripperAngleRad(angle);
+						is_haptic_switch_pressed = angle < haptic_gripper_switch_thresh;
+					} else {
+						hapticDevice->getUserSwitch(0, is_haptic_switch_pressed);
+					}
 					if(is_haptic_switch_pressed) {
 						// set orientation workspace center
 						robot_wspace_rot_quat = haptic_rot_quat.conjugate()*curr_robot_rot_quat;
@@ -279,7 +300,13 @@ int main() {
 				}
 				// check for switch to orientation control with haptic device
 				if(controller_counter%100 == 0) {
-					hapticDevice->getUserSwitch(0, is_haptic_switch_pressed);
+					if (use_gripper_switch) {
+						double angle;
+						hapticDevice-> getGripperAngleRad(angle);
+						is_haptic_switch_pressed = angle < haptic_gripper_switch_thresh;
+					} else {
+						hapticDevice->getUserSwitch(0, is_haptic_switch_pressed);
+					}
 					if(!is_haptic_switch_pressed) {
 						state = HapticState::HapticTranslation;
 						// compute robot current position
