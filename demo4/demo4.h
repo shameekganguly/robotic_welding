@@ -62,4 +62,6 @@ const double PART_BACKOFF_DIST = 0.05; // m
 // offset from joint at which to weld
 const double WELD_OFFSET = 0.005; // m
 
+const double WELD_LINEAR_SPEED = 0.025; // m/s
+
 #endif

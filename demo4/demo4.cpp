@@ -67,19 +67,17 @@ void jsonArrToVector3d (const Json::Value& jarray, Eigen::Vector3d& ret_vec) {
 // load json weld joint data
 void loadJson(
 	const string& fname,
-	Eigen::Vector3d& joint_start,
-	Eigen::Vector3d& joint_end,
-	Eigen::Vector3d& normal1,
-	Eigen::Vector3d& normal2
+	Eigen::Vector3d& circle_center,
+	double& circle_radius,
+	Eigen::Vector3d& normal
 ) {
 	Json::Value root;
 	std::ifstream t(fname);
 	Json::Reader reader;
 	reader.parse(t, root);
-	jsonArrToVector3d(root["joint_start"], joint_start);
-	jsonArrToVector3d(root["joint_end"], joint_end);
-	jsonArrToVector3d(root["plane1"]["normal"], normal1);
-	jsonArrToVector3d(root["plane2"]["normal"], normal2);
+	jsonArrToVector3d(root["circle_center"], circle_center);
+	circle_radius = root["circle_radius"].asDouble();
+	jsonArrToVector3d(root["circle_normal"], normal);
 }
 
 // force sensor calibration. NOTE: should only be called when sensor is static
@@ -189,7 +187,7 @@ bool isPosOriChangeSafe(
 	const Eigen::Matrix3d& curr_ori
 ) {
 	const double pos_change_thresh = 0.1; // 10 cm
-	const double ori_change_thresh = 10.0 * M_PI/180.0; // 10 degrees
+	const double ori_change_thresh = 20.0 * M_PI/180.0; // 10 degrees
 	bool ret_flag = true;
 	if ((curr_pos - des_pos).norm() > pos_change_thresh) {
 		cerr << "Haptic device position update exceeded threshold: " << pos_change_thresh << endl;
@@ -200,7 +198,8 @@ bool isPosOriChangeSafe(
 	Eigen::AngleAxisd ori_change (curr_ori.transpose()*des_ori);
 	//TODO: verify behavior with identity matrix
 	if (ori_change.angle() > ori_change_thresh) {
-		cerr << "Haptic device orientation update exceeded threshold: " << ori_change_thresh << endl;
+		cerr << "Haptic device orientation update exceeded threshold: " << ori_change_thresh 
+		<< " commanded: " << ori_change.angle() << endl;
 		ret_flag = false;
 	}
 	return ret_flag;
@@ -287,11 +286,19 @@ int main() {
 	Eigen::Vector3d curr_vel; curr_vel.setZero();
 	Vector6d force; force.setZero();
 	Vector6d force_sensor_bias; force_sensor_bias.setZero();
-	Eigen::Vector3d joint_start, joint_stop; // extreme points of the weld joint
-	Eigen::Vector3d plane1_normal, plane2_normal; // normals are corrected so that they indicate the free space
-	Eigen::Vector3d pre_weld_point, weld_start, weld_stop, post_weld_point; // computed from weld points and planes
+	Eigen::Vector3d joint_start; // start point of the circular weld joint
+	Eigen::Vector3d circle_center; // center of the circle
+	double circle_radius; // radius of the joint
+	Eigen::Vector3d circle_normal; // base normal is corrected so that they indicate the free space
+	Eigen::Vector3d local_x_vector_init, local_x_vector;
+	Eigen::Vector3d weld_start_onjoint;
+	Eigen::Vector3d pre_weld_point, weld_start, post_weld_point; // computed from weld points and planes
+	double weld_theta = 0.0; // trajectory variable around the circle;
+	double weld_theta_stop = M_PI; // only do half trajectory to start with
 	uint state_counter = 0;
 	bool fReachedPos = false;
+	double weld_start_time = 0.0;
+	double weld_omega = ;
 	Vector6d calib_force; calib_force.setZero();
 
 	// create a logger
@@ -376,6 +383,7 @@ int main() {
 						haptic_device_ready = std::stoi(redis_client.get(RKEY_HAPTIC_READY));
 					} catch (...) {
 						haptic_device_ready = false;
+						cout << "Haptic ready fetch error" << endl;
 					}
 					try {
 						des_control_state = static_cast<ControllerState>(std::stoi(redis_client.get(RKEY_IIWA_CTRL_STATE_INPUT)));
@@ -387,13 +395,16 @@ int main() {
 						state = ControllerState::Float;
 					}
 					if (haptic_device_ready) {
+						cout << "Switch to haptic" << endl;
 						state = ControllerState::Haptic;
 						// turn off OTG for haptic mode
 						oppoint_task->_use_interpolation_flag = false;
 						oppoint_task->reInitializeTask();
 						f_update_task_models = true;
 						// start logging
-						logger.start();
+						if(!logger._f_is_logging){
+							logger.start();
+						}
 					}
 				}
 				break;
@@ -539,21 +550,30 @@ int main() {
 				switch (weld_traj_state) {
 					case WeldTrajectoryState::Init:
 						// load data from json file
-						loadJson(joint_estimation_file, joint_start, joint_stop, plane1_normal, plane2_normal);
+						loadJson(joint_estimation_file, circle_center, circle_radius, circle_normal);
 						// NOTE: we do not sanity check the data
 						// compute weld start and stop points
-						weld_start = joint_start + WELD_OFFSET * (plane1_normal + plane2_normal);
-						weld_stop = joint_stop + WELD_OFFSET * (plane1_normal + plane2_normal);
+						weld_theta = 0.0;
+						Vector3d weld_temp1 = circle_center;
+						weld_temp1 /= weld_temp1.norm();
+						local_x_vector_init =  weld_temp1 - circle_normal * (circle_normal.dot(weld_temp1));
+						local_x_vector_init /= local_x_vector_init.norm();
+
+						weld_omega = WELD_LINEAR_SPEED / circle_radius;
+						joint_start = circle_center - local_x_vector_init * circle_radius;
+
+						weld_start = joint_start + WELD_OFFSET * (circle_normal - local_x_vector_init);
 						// compute preweld point
-						pre_weld_point = joint_start + PART_BACKOFF_DIST * (plane1_normal + plane2_normal);
-						// TODO change above to be closer to the current ee position
-						post_weld_point = joint_stop + PART_BACKOFF_DIST * (plane1_normal + plane2_normal);
+						pre_weld_point = joint_start + PART_HEIGHT * circle_normal - PART_BACKOFF_DIST * local_x_vector_init);
 						// TODO: compute optimal orientation
 						// set oppos desired position to pre_point
 						oppoint_task->_desired_position = pre_weld_point;
+						oppoint_task->_desired_orientation.col(0) << local_x_vector_init;
+						oppoint_task->_desired_orientation.col(1) << circle_normal.cross(local_x_vector_init);
+						oppoint_task->_desired_orientation.col(2) << circle_normal;
 						// oppoint_task->_use_velocity_saturation_flag = true;
 						// oppoint_task->_linear_saturation_velocity = 0.05;
-						oppoint_task->_otg->setMaxLinearVelocity(0.05);
+						oppoint_task->_otg->setMaxLinearVelocity(2.0*WELD_LINEAR_SPEED);
 						oppoint_task->_otg->setMaxLinearAcceleration(0.025);
 						cout << "Pre weld point" << endl;
 						cout << pre_weld_point.transpose() << endl;
@@ -578,11 +598,11 @@ int main() {
 							state_counter = 0;
 							// set oppos desired point to weld start
 							oppoint_task->_desired_position = weld_start;
+							// desired orientation stays the same as the pre weld point
 							cout << "Weld start" << endl;
 							cout << weld_start.transpose() << endl;
 							fReachedPos = false;
 							// f_update_task_models = true;
-							// TODO: use OTG, higher gains
 							// switch state to StartPoint
 							weld_traj_state = WeldTrajectoryState::StartPoint;
 						}
@@ -599,14 +619,12 @@ int main() {
 						state_counter++;
 						if (fReachedPos && state_counter > 500) {
 							state_counter = 0;
-							// set oppos desired point to weld stop
-							oppoint_task->_desired_position = weld_stop;
-							cout << "Weld stop" << endl;
-							cout << weld_stop.transpose() << endl;
+							cout << "Execute circular trajectory" << endl;
+							weld_start_time = timer.elapsedTime();
 							// lower oppos task saturation velocity
 							// oppoint_task->_linear_saturation_velocity = 0.01;
 							// oppoint_task->_saturation_velocity = 0.08;
-							oppoint_task->_otg->setMaxLinearVelocity(0.02);
+							oppoint_task->_otg->setMaxLinearVelocity(WELD_LINEAR_SPEED);
 							fReachedPos = false;
 							// TODO: use OTG, higher gains
 							// switch state to Weld
@@ -614,8 +632,19 @@ int main() {
 						}
 						break;
 					case WeldTrajectoryState::Weld:
+						// compute weld trajectory
+						weld_theta = (timer.elapsedTime() - weld_start_time) * weld_omega;
+						local_x_vector = Eigen::AngleAxisd(weld_theta, circle_normal) * local_x_vector_init;
+						
+						oppoint_task->_desired_position = circle_center - local_x_vector * circle_radius;;
+						oppoint_task->_desired_position += WELD_OFFSET * (circle_normal - local_x_vector);
+						// TODO: set desired velocity
+						oppoint_task->_desired_orientation.col(0) << local_x_vector;
+						oppoint_task->_desired_orientation.col(1) << circle_normal.cross(local_x_vector);
+						oppoint_task->_desired_orientation.col(2) << circle_normal;
+
 						// check if reached weld stop
-						if (!fReachedPos && isReachedDesPos(curr_pos, oppoint_task->_desired_position, robot->_dq)) {
+						if ( weld_theta < weld_theta_stop && !fReachedPos && isReachedDesPos(curr_pos, oppoint_task->_desired_position, robot->_dq)) {
 							state_counter = 0;
 							fReachedPos = true;
 						}
@@ -624,13 +653,15 @@ int main() {
 						if (fReachedPos && state_counter > 500) {
 							state_counter = 0;
 							// set oppos desired point to post point
+							post_weld_point = oppoint_task->_desired_position + PART_HEIGHT * circle_normal - PART_BACKOFF_DIST * local_x_vector);
 							oppoint_task->_desired_position = post_weld_point;
+							// keep desired orientation same as weld_point
 							cout << "Post weld point" << endl;
 							cout << post_weld_point.transpose() << endl;
 							// up oppos task saturation velocity again
 							// oppoint_task->_linear_saturation_velocity = 0.05;
 							// oppoint_task->_saturation_velocity = 0.08;
-							oppoint_task->_otg->setMaxLinearVelocity(0.05);
+							oppoint_task->_otg->setMaxLinearVelocity(2.0*WELD_LINEAR_SPEED);
 							fReachedPos = false;
 							// TODO: use OTG, higher gains
 							// switch state to Weld
