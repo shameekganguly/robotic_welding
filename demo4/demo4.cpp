@@ -97,7 +97,7 @@ void getSensorBias(
 	Eigen::Vector3d sensor_tool_gravity_moment = tool_local_com.cross(ori_sensor_base.transpose()*GRAVITY_BASE);
 	// subtract tool weight and moment from raw_force
 	sensor_bias << raw_force.segment<3>(0) - ori_sensor_base.transpose()*TOOL_MASS*GRAVITY_BASE,
-				raw_force.segment<3>(3) - sensor_tool_gravity_moment;
+				raw_force.segment<3>(3) - TOOL_MASS*sensor_tool_gravity_moment;
 	cout << sensor_bias.transpose() << endl;
 }
 
