@@ -16,7 +16,7 @@
 
 using namespace std;
 
-const string world_fname = "resources/world.urdf";
+const string world_fname = "resources/world5.urdf";
 const string robot_fname = "../resources/kuka_iiwa/kuka_iiwa.urdf";
 const string robot_name = "IIWA";
 string camera_name = "camera_front";
@@ -137,6 +137,7 @@ int main(int argc, char** argv) {
     	// cam_up_axis = camera_vertical;
     	// cam_up_axis.normalize();
     	cam_up_axis << 0.0, 0.0, 1.0; //TODO: there might be a better way to do this
+	    graphics->getCameraPose(camera_name, camera_pos, camera_vertical, camera_lookat);
 	    Eigen::Vector3d cam_roll_axis = (camera_lookat - camera_pos).cross(cam_up_axis);
     	cam_roll_axis.normalize();
     	Eigen::Vector3d cam_lookat_axis = camera_lookat;
@@ -296,6 +297,10 @@ void keySelect(GLFWwindow* window, int key, int scancode, int action, int mods)
     if ((key == '2') && action == GLFW_PRESS) {
         // change camera
         camera_name = "camera_top";
+    }
+    if ((key == '3') && action == GLFW_PRESS) {
+        // change camera
+        camera_name = "camera_front_zoom";
     }
 }
 

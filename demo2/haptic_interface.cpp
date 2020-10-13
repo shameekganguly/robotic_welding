@@ -138,7 +138,7 @@ int main() {
 	ffilter = ForceFilter<filter_order, 3>(filter_coeffs, 0.001);
 
 	// parameters
-	const double haptic_to_robot_pos_scaling = 1.5;
+	const double haptic_to_robot_pos_scaling = 6.0;
 	const double haptic_to_robot_rot_scaling = 1.0;
 	const double haptic_imped_force_scaling_free_space = 10.0;
 	const double haptic_imped_force_scaling_contact = 50.0;
@@ -167,14 +167,15 @@ int main() {
 		robot->rotation(curr_robot_rot, oppoint_link_name);
 		curr_robot_rot_quat = Eigen::Quaterniond(curr_robot_rot);
 		raw_force = RedisClient::decodeEigenMatrixJSON(ret_str[2]);
-		calibrated_force(raw_force, curr_robot_rot, &force);
+		// calibrated_force(raw_force, curr_robot_rot, &force);
+		force = raw_force.segment<3>(0);
 		double contact_thresh = 3.5; //N
 		is_in_contact = (force.norm() > contact_thresh);
-		// if(controller_counter%1000 == 0) {
-		// 	cout << "Raw force: " << raw_force.head(3).transpose() << " "
-		// 		<< "Calib force: " << force.transpose() << " "
-		// 		<< "Calib force norm: " << force.norm() << endl;
-		// }
+		if(controller_counter%1000 == 0) {
+			cout << "Raw force: " << raw_force.head(3).transpose() << " "
+				<< "Calib force: " << force.transpose() << " "
+				<< "Calib force norm: " << force.norm() << endl;
+		}
 
 		// update the model 20 times slower or when task hierarchy changes
 		if(controller_counter%20 == 0) {
@@ -225,7 +226,10 @@ int main() {
 						// compute robot workspace center. TODO: use haptic primitive
 						robot_wspace_pos = -haptic_pos*haptic_to_robot_pos_scaling;
 						robot_wspace_pos = haptic_to_robot_rotation_frame*robot_wspace_pos + curr_robot_pos;
-						cout << "robot_wspace_pos " << robot_wspace_pos << endl;
+						cout << "Haptic pos " << haptic_pos.transpose() << endl;
+						cout << "robot_wspace_pos " << robot_wspace_pos.transpose() << endl;
+						cout << "robot curr pos " << curr_robot_pos.transpose() << endl;
+						cout << "robot q " << robot->_q.transpose() << endl; 
 						// TODO: compute transform for rotation
 					}
 				}

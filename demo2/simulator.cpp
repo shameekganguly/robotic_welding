@@ -13,18 +13,21 @@ typedef Eigen::Matrix<double, 6, 1> Vector6d;
 using namespace std;
 
 // Redis keys
-const string RKEY_IIWA_JOINT_POS = "sai2::iiwaForceControl::iiwaBot::sensors::q"; // read from sim/ driver
-const string RKEY_IIWA_JOINT_VEL = "sai2::iiwaForceControl::iiwaBot::sensors::dq"; // read from sim/ driver
+// const string RKEY_IIWA_JOINT_POS = "sai2::iiwaForceControl::iiwaBot::sensors::q"; // read from sim/ driver
+const string RKEY_IIWA_JOINT_POS = "sai2::KUKA_IIWA::sensors::q";
+// const string RKEY_IIWA_JOINT_VEL = "sai2::iiwaForceControl::iiwaBot::sensors::dq"; // read from sim/ driver
+const string RKEY_IIWA_JOINT_VEL = "sai2::KUKA_IIWA::sensors::dq"; // read from sim/ driver
 const string RKEY_IIWA_FORCE = "sai2::optoforceSensor::6Dsensor::force"; // read from OptoForce driver/ simulator
 // const string RKEY_IIWA_FORCE = "sai2::iiwaForceControl::iiwaBot::simulation::sensors::force_sensor::force";
-const string RKEY_IIWA_DES_TORQUE = "sai2::iiwaForceControl::iiwaBot::actuators::fgc"; // write to sim/ driver
+// const string RKEY_IIWA_DES_TORQUE = "sai2::iiwaForceControl::iiwaBot::actuators::fgc"; // write to sim/ driver
+const string RKEY_IIWA_DES_TORQUE = "sai2::KUKA_IIWA::actuators::fgc";
 
 #include <signal.h>
 bool runloop = true;
 void sighandler(int sig)
 { runloop = false; }
 
-const string world_fname = "resources/world2.urdf";
+const string world_fname = "resources/world5.urdf";
 const string robot_fname = "../resources/kuka_iiwa/kuka_iiwa.urdf";
 const string robot_name = "IIWA";
 
