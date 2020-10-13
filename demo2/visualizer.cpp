@@ -25,6 +25,7 @@ string camera_name = "camera_front";
 // Redis keys
 const string RKEY_IIWA_JOINT_POS = "sai2::KUKA_IIWA::sensors::q"; // read from sim/ driver
 const string RKEY_IIWA_JOINT_VEL = "sai2::KUKA_IIWA::sensors::dq"; // read from sim/ driver
+const string RKEY_CAMERA_VIEW_FRAME = "sai2::camera::view_frame";
 
 #include <signal.h>
 bool runloop = true;
@@ -183,6 +184,19 @@ int main(int argc, char** argv) {
 			fZoom = false;
 	    }
 	    graphics->setCameraPose(camera_name, camera_pos, cam_up_axis, camera_lookat);
+
+	    // set redis key
+	    Eigen::Vector3d cam_x = (camera_pos - camera_lookat);
+	    cam_x -= cam_up_axis*(cam_up_axis.dot(cam_x));
+	    cam_x /= cam_x.norm();
+	    Eigen::Matrix3d world_to_camera_frame;
+	    world_to_camera_frame.col(0) = cam_x;
+	    world_to_camera_frame.col(1) = (cam_up_axis.cross(cam_x));
+	    world_to_camera_frame.col(2) = cam_up_axis;
+	    // cout << "\n" << world_to_camera_frame << endl;
+
+	    redis_client.setEigenMatrixDerived(RKEY_CAMERA_VIEW_FRAME, world_to_camera_frame);
+
 	    glfwGetCursorPos(window, &last_cursorx, &last_cursory);
 	 //    if (fRobotLinkSelect) {
 		// 	//activate widget
@@ -300,7 +314,15 @@ void keySelect(GLFWwindow* window, int key, int scancode, int action, int mods)
     }
     if ((key == '3') && action == GLFW_PRESS) {
         // change camera
-        camera_name = "camera_front_zoom";
+        // camera_name = "camera_front_zoom";
+        camera_name = "camera_front_watchwelding";
+    }
+    if ((key == '4') && action == GLFW_PRESS) {
+        // change camera
+        camera_name = "camera_inside_zoom";
+    }
+    if ((key == '5') && action == GLFW_PRESS) {
+    	camera_name = "camera_back_zoom";
     }
 }
 

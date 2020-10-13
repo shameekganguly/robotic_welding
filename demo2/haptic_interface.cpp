@@ -25,6 +25,7 @@ const string RKEY_HAPTIC_STATUS = "sai2::iiwaForceControl::iiwaBot::haptic::hapt
 const string RKEY_IIWA_DES_POS = "sai2::iiwaForceControl::iiwaBot::haptic::xp_des"; // write to robot
 const string RKEY_IIWA_DES_ORI = "sai2::iiwaForceControl::iiwaBot::haptic::xr_des"; // write to robot
 const string RKEY_HAPTIC_FORCE_CALIB = "sai2::iiwaForceControl::iiwaBot::haptic::calib_force";
+const string RKEY_CAMERA_VIEW_FRAME = "sai2::camera::view_frame";
 
 // models
 const string world_fname = "resources/world.urdf";
@@ -160,22 +161,24 @@ int main() {
 		timer.waitForNextLoop();
 
 		// read from Redis
-		ret_str = redis_client.pipeget({RKEY_IIWA_JOINT_POS, RKEY_IIWA_JOINT_VEL, RKEY_IIWA_FORCE});
+		ret_str = redis_client.pipeget({RKEY_IIWA_JOINT_POS, RKEY_IIWA_JOINT_VEL, RKEY_IIWA_FORCE, RKEY_CAMERA_VIEW_FRAME});
 		robot->_q = RedisClient::decodeEigenMatrixJSON(ret_str[0]);
 		robot->_dq = RedisClient::decodeEigenMatrixJSON(ret_str[1]);
 		robot->position(curr_robot_pos, oppoint_link_name, oppoint_pos_in_link);
 		robot->rotation(curr_robot_rot, oppoint_link_name);
 		curr_robot_rot_quat = Eigen::Quaterniond(curr_robot_rot);
 		raw_force = RedisClient::decodeEigenMatrixJSON(ret_str[2]);
+		haptic_to_robot_rotation_frame = RedisClient::decodeEigenMatrixJSON(ret_str[3]);
+
 		// calibrated_force(raw_force, curr_robot_rot, &force);
 		force = raw_force.segment<3>(0);
 		double contact_thresh = 3.5; //N
 		is_in_contact = (force.norm() > contact_thresh);
-		if(controller_counter%1000 == 0) {
-			cout << "Raw force: " << raw_force.head(3).transpose() << " "
-				<< "Calib force: " << force.transpose() << " "
-				<< "Calib force norm: " << force.norm() << endl;
-		}
+		// if(controller_counter%1000 == 0) {
+		// 	cout << "Raw force: " << raw_force.head(3).transpose() << " "
+		// 		<< "Calib force: " << force.transpose() << " "
+		// 		<< "Calib force norm: " << force.norm() << endl;
+		// }
 
 		// update the model 20 times slower or when task hierarchy changes
 		if(controller_counter%20 == 0) {
