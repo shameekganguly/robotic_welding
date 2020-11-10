@@ -146,7 +146,7 @@ check if two planes are equal
 '''
 def arePlanesEqual(plane1, plane2, all_points):
 	normal_dot = abs(np.dot(plane1['normal'], plane2['normal']))
-	if normal_dot > 0.98:
+	if abs(normal_dot) > 0.98:
 		# print "Normal close."
 		dist_arr = []
 		for i in range(3):
