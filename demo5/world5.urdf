@@ -9,25 +9,19 @@
 		<origin xyz="0.0 0.0 0.0" rpy="0 0 0" />
 	</robot>
 
-	<static_object name="Box">
+	<static_object name="Table">
 		<origin xyz="0.0 0.0 0.0" rpy="0 0 0" />
-		<!-- <collision>
-	        <origin xyz="0.0 0.0 -0.25" rpy="0 0 0" />
-	        <geometry>
-	            <box size="3.0 3.0 0.5" />
-	        </geometry>
-	    </collision> -->
 	    <visual>
 	        <origin xyz="0.0 0.0 -0.25" rpy="0 0 0" />
 	        <geometry>
 	            <box size="3.0 3.0 0.5" />
 	        </geometry>
 	        <material name="material_red">
-		        <color rgba="0.2 0.2 0.2 1.0" />
+		        <color rgba="0.16 0.1 0.08 1.0" />
 	        </material>
 	    </visual>
 	</static_object>
-	<static_object name="Table">
+	<static_object name="Box">
 		<origin xyz="0.25 0.74 -0.025" rpy="0 0 0" />
 	    <visual>
 	        <origin xyz="0.0 0.0 0.0" rpy="0 0 0" />
@@ -35,11 +29,17 @@
 	            <box size="0.3 0.3 0.15" />
 	        </geometry>
 	        <material name="material_grey">
-		        <color rgba="0.1 0.1 0.1 1.0" />
+		        <color rgba="0.1 0.2 0.4 1.0" />
 	        </material>
 	    </visual>
+	    <collision>
+	        <origin xyz="0.0 0.0 0.0" rpy="0 0 0" />
+	        <geometry>
+	            <box size="0.3 0.3 0.15" />
+	        </geometry>
+	    </collision>
 	</static_object>
-	<static_object name="Curvilinear fillet weld-piece">
+	<!-- <static_object name="Curvilinear fillet weld-piece">
 		<origin xyz="0.1 0.75 0.07" rpy="1.5707 0 1.5707" />
 	    <visual>
 	        <origin xyz="0.0 0.0 0.0" rpy="-1.5707 0 0" />
@@ -53,6 +53,21 @@
 	            <mesh filename="resources/parts_curvilinear.obj" scale="0.04 0.04 0.04"/>
 	        </geometry>
 	    </collision>
+	</static_object> -->
+	<static_object name="Curvilinear fillet weld-piece">
+		<origin xyz="0.25 0.75 0.05" rpy="1.5707 0 1.5707" />
+	    <visual>
+	        <origin xyz="0.0 0.0 0.0" rpy="-1.5707 0 0" />
+	        <geometry>
+	            <mesh filename="resources/parts_curvilinear_wall_only.obj" scale="1.0 1.0 1.0"/>
+	        </geometry>
+	    </visual>
+<!-- 	    <collision>
+	        <origin xyz="0.0 0.0 0.0" rpy="-1.5707 0 0" />
+	        <geometry>
+	            <mesh filename="resources/parts_curvilinear_wall_only.obj" scale="1.0 1.0 1.0"/>
+	        </geometry>
+	    </collision> -->
 	</static_object>
 	<!-- <static_object name="Horizontal fillet weld-piece">
 		<origin xyz="0.27 0.74 0.0575" rpy="0 0 1.5707" />
@@ -103,6 +118,15 @@
 		<lookat xyz="0.0 0.2 0.3" />
 	</light>
 
+	<light name="light4" type="directional">
+		<position xyz="-1.0 -2.0 0.5" />
+		<lookat xyz="0.3 0.7 0.3" />
+	</light>
+	<light name="light5" type="directional">
+		<position xyz="-3.0 2.0 0.5" />
+		<lookat xyz="0.3 0.7 0.3" />
+	</light>
+
 <!-- 	<light name="light3" type="directional">
 		<position xyz="0.0 0.0 4.0" />
 		<lookat xyz="0.0 0.0 0.0" />
@@ -117,15 +141,30 @@
 		<vertical xyz="0.0 0.0 1.0" />
 		<lookat xyz="0.0 0.7 0.3" />
 	</camera>
-	<camera name="camera_top">
-		<position xyz="0.3 0.8 0.8" />
+	<camera name="camera_front_zoom">
+		<position xyz="0.6 0.7 0.2" />
 		<vertical xyz="0.0 0.0 1.0" />
-		<lookat xyz="0.3 0.7 0.3" />
+		<lookat xyz="0.0 0.7 0.1" />
 	</camera>
-	<camera name="camera_side">
-		<position xyz="0.0 -3.0 2.0" />
+	<camera name="camera_front_watchwelding">
+		<position xyz="0.8 0.7 0.3" />
 		<vertical xyz="0.0 0.0 1.0" />
-		<lookat xyz="0.0 0.0 0.5" />
+		<lookat xyz="0.0 0.7 0.1" />
+	</camera>
+	<camera name="camera_top">
+		<position xyz="0.24 0.7 0.42" />
+		<vertical xyz="0.0 -1.0 0.0" />
+		<lookat xyz="0.25 0.7 0.3" />
+	</camera>
+	<camera name="camera_inside_zoom">
+		<position xyz="0.22 0.45 0.10" />
+		<vertical xyz="0.0 0.0 1.0" />
+		<lookat xyz="0.22 0.7 0.1" />
+	</camera>
+	<camera name="camera_back_zoom">
+		<position xyz="-0.2 0.8 0.2" />
+		<vertical xyz="0.0 0.0 1.0" />
+		<lookat xyz="0.22 0.7 0.06" />
 	</camera>
 	<camera name="camera_isometric">
 		<position xyz="2.5 -2.5 3.0" />

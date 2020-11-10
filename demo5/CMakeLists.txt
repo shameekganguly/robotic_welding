@@ -10,5 +10,7 @@ FILE(COPY
 	world5.urdf
 	parts_curvilinear.mtl
 	parts_curvilinear.obj
+	parts_curvilinear_wall_only.mtl
+	parts_curvilinear_wall_only.obj
 	DESTINATION ${RESOURCE_DIR}
 )
