@@ -5,13 +5,13 @@
 
 // joint positions the robot goes to before haptic control
 double IIWA_HOME_JPOS [7] = {
-	4/180.0*M_PI,
-	-25/180.0*M_PI,
-	-2/180.0*M_PI,
-	77/180.0*M_PI,
-	6.3/180.0*M_PI,
-	-55/180.0*M_PI,
-	-84/180.0*M_PI
+	4.8/180.0*M_PI,
+	-22.9/180.0*M_PI,
+	-6.9/180.0*M_PI,
+	61.7/180.0*M_PI,
+	3.3/180.0*M_PI,
+	-87.11/180.0*M_PI,
+	-10.4/180.0*M_PI
 };
 
 // base configuration away from workpiece before calibrating force sensor
@@ -27,13 +27,13 @@ double IIWA_FORCE_CALIB_JPOS [7] = {
 };*/
 
 double IIWA_FORCE_CALIB_JPOS [7] = {
-	4/180.0*M_PI,
-        -25/180.0*M_PI,
-        -2/180.0*M_PI,
-        77/180.0*M_PI,
-        6.3/180.0*M_PI,
-        -55/180.0*M_PI,
-        -84/180.0*M_PI
+	4.8/180.0*M_PI,
+	-22.9/180.0*M_PI,
+	-6.9/180.0*M_PI,
+	61.7/180.0*M_PI,
+	3.3/180.0*M_PI,
+	-87.11/180.0*M_PI,
+	-10.4/180.0*M_PI
 };
 
 
@@ -58,6 +58,7 @@ const double TOOL_COM [3] = {0.0904, -0.001, 0.1474};
 
 // backoff distance from part
 const double PART_BACKOFF_DIST = 0.05; // m
+const double PART_HEIGHT = 0.1; //m
 
 // offset from joint at which to weld
 const double WELD_OFFSET = 0.005; // m

@@ -77,7 +77,7 @@ void loadJson(
 	reader.parse(t, root);
 	jsonArrToVector3d(root["circle_center"], circle_center);
 	circle_radius = root["circle_radius"].asDouble();
-	jsonArrToVector3d(root["circle_normal"], normal);
+	jsonArrToVector3d(root["base_plane"]["normal"], normal);
 }
 
 // force sensor calibration. NOTE: should only be called when sensor is static
@@ -293,12 +293,15 @@ int main() {
 	Eigen::Vector3d local_x_vector_init, local_x_vector;
 	Eigen::Vector3d weld_start_onjoint;
 	Eigen::Vector3d pre_weld_point, weld_start, post_weld_point; // computed from weld points and planes
+	Eigen::Vector3d weld_temp1;
 	double weld_theta = 0.0; // trajectory variable around the circle;
-	double weld_theta_stop = M_PI; // only do half trajectory to start with
+	double weld_theta_start = M_PI/6.0;
+	double weld_theta_stop = 2*M_PI - M_PI/6.0; // only do half trajectory to start with
+	double delta_theta = 0.0;
 	uint state_counter = 0;
 	bool fReachedPos = false;
 	double weld_start_time = 0.0;
-	double weld_omega = ;
+	double weld_omega = 0.0;
 	Vector6d calib_force; calib_force.setZero();
 
 	// create a logger
@@ -553,24 +556,37 @@ int main() {
 						loadJson(joint_estimation_file, circle_center, circle_radius, circle_normal);
 						// NOTE: we do not sanity check the data
 						// compute weld start and stop points
-						weld_theta = 0.0;
-						Vector3d weld_temp1 = circle_center;
+						weld_theta = weld_theta_start;
+						weld_temp1 = circle_center;
 						weld_temp1 /= weld_temp1.norm();
 						local_x_vector_init =  weld_temp1 - circle_normal * (circle_normal.dot(weld_temp1));
 						local_x_vector_init /= local_x_vector_init.norm();
 
+						local_x_vector_init = Eigen::AngleAxisd(weld_theta, -circle_normal) * local_x_vector_init;
+						
+						cout << "Initial local x: " << local_x_vector_init.transpose() << endl;
 						weld_omega = WELD_LINEAR_SPEED / circle_radius;
 						joint_start = circle_center - local_x_vector_init * circle_radius;
+						cout << "Joint start: " << joint_start.transpose() << endl;
 
 						weld_start = joint_start + WELD_OFFSET * (circle_normal - local_x_vector_init);
+						cout << "Weld start: " << weld_start.transpose() << endl;
 						// compute preweld point
-						pre_weld_point = joint_start + PART_HEIGHT * circle_normal - PART_BACKOFF_DIST * local_x_vector_init);
+						pre_weld_point = joint_start + PART_HEIGHT * circle_normal - PART_BACKOFF_DIST * local_x_vector_init;
 						// TODO: compute optimal orientation
 						// set oppos desired position to pre_point
 						oppoint_task->_desired_position = pre_weld_point;
-						oppoint_task->_desired_orientation.col(0) << local_x_vector_init;
-						oppoint_task->_desired_orientation.col(1) << circle_normal.cross(local_x_vector_init);
-						oppoint_task->_desired_orientation.col(2) << circle_normal;
+						oppoint_task->_desired_orientation.col(0) << -local_x_vector_init;
+						oppoint_task->_desired_orientation.col(1) << -circle_normal.cross(-local_x_vector_init);
+						oppoint_task->_desired_orientation.col(2) << -circle_normal;
+						// cout << "Desired start orientation " << endl;
+						// cout << oppoint_task->_desired_orientation << endl;
+
+						// state = ControllerState::Float;
+						// oppoint_task->_desired_position = curr_pos;
+						// oppoint_task->_desired_orientation = curr_rot;
+						// break;
+
 						// oppoint_task->_use_velocity_saturation_flag = true;
 						// oppoint_task->_linear_saturation_velocity = 0.05;
 						oppoint_task->_otg->setMaxLinearVelocity(2.0*WELD_LINEAR_SPEED);
@@ -633,18 +649,20 @@ int main() {
 						break;
 					case WeldTrajectoryState::Weld:
 						// compute weld trajectory
-						weld_theta = (timer.elapsedTime() - weld_start_time) * weld_omega;
-						local_x_vector = Eigen::AngleAxisd(weld_theta, circle_normal) * local_x_vector_init;
+						delta_theta = (timer.elapsedTime() - weld_start_time) * weld_omega;
+						weld_theta = weld_theta_start + delta_theta;
+						weld_theta = min(weld_theta, weld_theta_stop);
+						local_x_vector = Eigen::AngleAxisd(weld_theta - weld_theta_start, -circle_normal) * local_x_vector_init;
 						
 						oppoint_task->_desired_position = circle_center - local_x_vector * circle_radius;;
 						oppoint_task->_desired_position += WELD_OFFSET * (circle_normal - local_x_vector);
-						// TODO: set desired velocity
-						oppoint_task->_desired_orientation.col(0) << local_x_vector;
-						oppoint_task->_desired_orientation.col(1) << circle_normal.cross(local_x_vector);
-						oppoint_task->_desired_orientation.col(2) << circle_normal;
+						// // TODO: set desired velocity
+						oppoint_task->_desired_orientation.col(0) << -local_x_vector;
+						oppoint_task->_desired_orientation.col(1) << -circle_normal.cross(-local_x_vector);
+						oppoint_task->_desired_orientation.col(2) << -circle_normal;
 
 						// check if reached weld stop
-						if ( weld_theta < weld_theta_stop && !fReachedPos && isReachedDesPos(curr_pos, oppoint_task->_desired_position, robot->_dq)) {
+						if ( weld_theta >= weld_theta_stop && !fReachedPos && isReachedDesPos(curr_pos, oppoint_task->_desired_position, robot->_dq)) {
 							state_counter = 0;
 							fReachedPos = true;
 						}
@@ -653,7 +671,7 @@ int main() {
 						if (fReachedPos && state_counter > 500) {
 							state_counter = 0;
 							// set oppos desired point to post point
-							post_weld_point = oppoint_task->_desired_position + PART_HEIGHT * circle_normal - PART_BACKOFF_DIST * local_x_vector);
+							post_weld_point = oppoint_task->_desired_position + 0.01 * circle_normal - 0.01 * local_x_vector;
 							oppoint_task->_desired_position = post_weld_point;
 							// keep desired orientation same as weld_point
 							cout << "Post weld point" << endl;
