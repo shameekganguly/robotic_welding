@@ -2,3 +2,5 @@
 *.dae
 bin
 build
+.DS_Store
+dump.rdb
