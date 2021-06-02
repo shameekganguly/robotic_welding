@@ -206,6 +206,7 @@ data = read_csv(data_fname, low_memory=False)
 data = data.rename(columns=lambda x: x.strip()) # this removes white spaces padding the column names
 data.loc[data.index.size-1] = [0] * data.columns.size # clean up last row
 data = data[(data['timestamp'] > MIN_TIME)]
+data = data.loc[0:min(10000, data.index.size)]
 
 print "Loaded data contains ", len(data), " points"
 
@@ -239,17 +240,17 @@ if not opts.skip_plots:
 data['in_contact'] = np.linalg.norm(data[force_inds] - FORCE_BIAS, axis=1) > FORCE_CONTACT_THRES
 contact_data = data[(data['in_contact'])]
 
+print "Contact data contains ", len(contact_data), " points"
+
 if not opts.skip_plots:
 	plt.figure()
 	plt.plot(data['timestamp'], data[force_inds] - FORCE_BIAS)
 	# plt.show()
 
-print "Contact data contains ", len(contact_data), " points"
-
 if not opts.skip_plots:
 	fig = plt.figure()
 	ax = fig.add_subplot(111, projection='3d')
-	ax.plot(contact_data[pos_inds[0]], contact_data[pos_inds[1]], contact_data[pos_inds[2]], 'o')
+	ax.plot(contact_data[pos_inds[0]].tolist(), contact_data[pos_inds[1]].tolist(), contact_data[pos_inds[2]].tolist(), 'o')
 	ax.set_xlabel('X')
 	ax.set_ylabel('Y')
 	ax.set_zlabel('Z')
@@ -284,7 +285,7 @@ print "Filtered data after unclustering contains ", len(filtered_contact_data), 
 if not opts.skip_plots:
 	fig = plt.figure()
 	ax = fig.add_subplot(111, projection='3d')
-	ax.plot(filtered_contact_data[pos_inds[0]], filtered_contact_data[pos_inds[1]], filtered_contact_data[pos_inds[2]], 'o')
+	ax.plot(filtered_contact_data[pos_inds[0]].tolist(), filtered_contact_data[pos_inds[1]].tolist(), filtered_contact_data[pos_inds[2]].tolist(), 'o')
 	ax.set_xlabel('X')
 	ax.set_ylabel('Y')
 	ax.set_zlabel('Z')
@@ -361,7 +362,7 @@ base_plane['normal'] = base_plane['normal'].tolist()
 if not opts.skip_plots:
 	fig = plt.figure()
 	ax = fig.add_subplot(111, projection='3d')
-	ax.plot(filtered_contact_data[pos_inds[0]], filtered_contact_data[pos_inds[1]], filtered_contact_data[pos_inds[2]], 'o')
+	ax.plot(filtered_contact_data[pos_inds[0]].tolist(), filtered_contact_data[pos_inds[1]].tolist(), filtered_contact_data[pos_inds[2]].tolist(), 'o')
 	p1_points = np.zeros((3,3))
 	for pi in range(3):
 		p1_points[pi,:] = filtered_contact_data[pos_inds].iloc[base_plane['inds'][pi]]
@@ -407,7 +408,7 @@ if not opts.skip_plots:
 	n_circle_plot_pts = 50
 	fig = plt.figure()
 	ax = fig.add_subplot(111, projection='3d')
-	ax.plot(filtered_contact_data[pos_inds[0]], filtered_contact_data[pos_inds[1]], filtered_contact_data[pos_inds[2]], 'o')
+	ax.plot(filtered_contact_data[pos_inds[0]].tolist(), filtered_contact_data[pos_inds[1]].tolist(), filtered_contact_data[pos_inds[2]].tolist(), 'o')
 	joint_plt_points = np.zeros((n_circle_plot_pts, 3))
 	for i in range(n_circle_plot_pts):
 		rot_quat = np.zeros(4)
